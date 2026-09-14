@@ -1,0 +1,4 @@
+export type ManagementStockBucket={id:string;product_id:string;variant_id:string|null;condition:string;quantity:number;weighted_average_cost:number|null;products:{name:string;sku:string;serialized:boolean;minimum_stock:number}|null;product_variants:{label:string;sku:string|null;barcode:string|null}|null};
+export type CataloguePrice={product_id:string;variant_id:string|null;condition:string;selling_price:number;active:boolean};
+export const exactCurrentPrice=(bucket:Pick<ManagementStockBucket,"product_id"|"variant_id"|"condition">,prices:CataloguePrice[])=>prices.find(p=>p.active&&p.product_id===bucket.product_id&&p.variant_id===bucket.variant_id&&p.condition===bucket.condition)?.selling_price??null;
+export const managementInventoryRows=(buckets:ManagementStockBucket[],prices:CataloguePrice[])=>buckets.map(bucket=>({...bucket,selling_price:exactCurrentPrice(bucket,prices)}));

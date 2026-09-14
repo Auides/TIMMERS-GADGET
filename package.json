@@ -1,0 +1,33 @@
+{
+  "name": "timmers-gadget",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test:catalogue-price": "node --test tests/catalogue-price-payload.test.ts",
+    "test:inventory": "node --test tests/inventory-ui.test.ts tests/inventory-overview.test.ts tests/inventory-server-actions.test.ts",
+    "test": "npm run test:catalogue-price && npm run test:inventory"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.112.4",
+    "next": "16.3.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "^4.5.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.3",
+    "supabase": "^2.117.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
