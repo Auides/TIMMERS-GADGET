@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { signOut } from "./actions";
 import { isNavigationCurrent } from "./app-shell-navigation";
+import { ConnectivityProvider } from "@/lib/offline/connectivity-provider";
+import { OfflineStatus } from "./offline-status";
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -41,12 +43,12 @@ export function AppShell({ children, name, role }: AppShellProps) {
     <form action={signOut}><button className="app-nav-link app-sign-out" type="submit" aria-label="Sign out" data-tooltip="Sign out"><span className="app-nav-icon" aria-hidden="true">↗</span><span className="app-sidebar-label">Sign out</span></button></form>
   </aside>;
 
-  return <div className="app-shell">
+  return <ConnectivityProvider><div className="app-shell">
     <div className="app-shell-desktop">{sidebar()}</div>
     {drawerOpen ? <><button className="app-drawer-backdrop" aria-label="Close navigation" onClick={() => setDrawerOpen(false)} /><div className="app-drawer app-drawer-open">{sidebar(true)}</div></> : null}
     <div className="app-workspace">
-      <header className="app-topbar"><button className="app-menu-button" aria-expanded={drawerOpen} aria-label="Open navigation" onClick={() => setDrawerOpen(true)}>☰</button><div><p className="app-eyebrow">TIMMERS GADGET</p><p className="app-topbar-context">Retail operations</p></div></header>
+      <header className="app-topbar"><button className="app-menu-button" aria-expanded={drawerOpen} aria-label="Open navigation" onClick={() => setDrawerOpen(true)}>☰</button><div><p className="app-eyebrow">TIMMERS GADGET</p><p className="app-topbar-context">Retail operations</p></div><OfflineStatus /></header>
       <div className="app-workspace-content">{children}</div>
     </div>
-  </div>;
+  </div></ConnectivityProvider>;
 }

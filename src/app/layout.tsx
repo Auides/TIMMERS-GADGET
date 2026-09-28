@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { PwaBootstrap } from "./pwa-bootstrap";
 
 export const metadata: Metadata = {
   title: "TIMMERS GADGET",
@@ -7,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
-  return <html lang="en"><body>{children}</body></html>;
+  return <html lang="en"><body><PwaBootstrap />{children}</body></html>;
 }
