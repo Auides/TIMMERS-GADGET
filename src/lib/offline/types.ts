@@ -35,6 +35,29 @@ export type SyncConflict = {
   resolutionMetadata: JsonValue | null;
 };
 
+export const offlineRoles = ["ADMIN", "MANAGER", "STAFF"] as const;
+export type OfflineRole = (typeof offlineRoles)[number];
+
+/** Encrypted, device-local enrollment metadata. It never contains a passcode or plaintext key. */
+export type OfflineAuthProfile = {
+  userId: string;
+  deviceId: string;
+  displayName: string;
+  role: OfflineRole;
+  activeSnapshot: boolean;
+  enrolledAt: string;
+  lastOnlineVerifiedAt: string;
+  cryptoVersion: "v1";
+  kdfAlgorithm: "PBKDF2-SHA-256";
+  kdfIterations: number;
+  kdfSalt: string;
+  wrappedVaultKey: string;
+  wrapIv: string;
+  failedUnlockAttempts: number;
+  nextUnlockAllowedAt: string | null;
+  updatedAt: string;
+};
+
 export type DeviceIdentityStore = { getDevice(): Promise<DeviceIdentity | undefined>; saveDevice(device: DeviceIdentity): Promise<void> };
 export type OutboxStore = {
   addOutbox(record: OutboxRecord): Promise<void>;
@@ -43,4 +66,10 @@ export type OutboxStore = {
   listOutboxByStatus(status: OutboxStatus): Promise<OutboxRecord[]>;
 };
 export type SyncConflictStore = { addConflict(conflict: SyncConflict): Promise<void> };
+export type OfflineAuthStore = {
+  getOfflineAuthProfile(userId: string, deviceId: string): Promise<OfflineAuthProfile | undefined>;
+  listOfflineAuthProfiles(deviceId: string): Promise<OfflineAuthProfile[]>;
+  saveOfflineAuthProfile(profile: OfflineAuthProfile): Promise<void>;
+  deleteOfflineAuthProfile(userId: string, deviceId: string): Promise<void>;
+};
 export type OfflineStore = DeviceIdentityStore & OutboxStore & SyncConflictStore;
