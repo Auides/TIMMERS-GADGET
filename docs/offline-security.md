@@ -74,8 +74,30 @@ Repeated failed unlocks use an increasing, capped device-local delay; a successf
 
 For offline Staff and Manager workspaces, one hour of inactivity locks the vault and crossing into a new `Africa/Lagos` business date requires a fresh unlock. Admin retains the existing online operational model, although every offline vault locks after browser/app restart. Immutable server operational-session history is intentionally a later phase.
 
+## Encrypted future mutation transport
+
+Phase 4B adds an encrypted, user-and-device-scoped V4 local mutation transport
+for a later approved offline-command phase. Each envelope uses the already
+unlocked, memory-only vault DEK with AES-GCM and a fresh IV. Its authenticated
+additional data binds the ciphertext to the crypto version, user, device,
+operation ID, mutation type, and envelope schema version. The plaintext record
+boundary is restricted to routing metadata: stable operation/idempotency IDs,
+scope, type, state, timestamps, retry count, next-attempt time, schema version,
+and generic status codes. Names, phones, identifiers, notes, quantities,
+prices, costs, payments, and request bodies are ciphertext only.
+
+The vault must be unlocked to decrypt or replay an operation. A role snapshot
+does not confer replay authority: an online authenticated Supabase session,
+active profile, current server-derived role, database rules, and business rules
+are all required when a future executor is approved. Enrollment disablement or
+deactivation removes the encrypted queue and conflict records from this device;
+role changes leave the encrypted queue in place but its future replay is
+re-authorized by the server. No service worker stores or replays operations.
+
 ## Risks and next steps
 
 IndexedDB is not a hardware-backed secure store. A compromised, unlocked browser or XSS can access data available to the page, so strong CSP, dependency hygiene, device controls, and fast lock behavior remain essential. Shared-device employees should lock before handing off a device and disable enrollment on retirement/replacement.
 
-Future phases may add encrypted business repositories, per-record authorization, deletion hooks when disabling enrollment, approved synchronization and conflict controls, and server-side operational-session auditing. They must not weaken the Phase 1 outbox or server-side RLS, audit, financial, inventory, idempotency, and concurrency protections.
+Future phases may add approved operation-specific executors and server-side
+operational-session auditing. They must not weaken server-side RLS, audit,
+financial, inventory, idempotency, or concurrency protections.

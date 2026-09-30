@@ -27,7 +27,10 @@ offline read roles in this phase. ADMIN offline capability is deliberately
 future work and must be designed and approved before it is enabled.
 
 No catalogue, inventory, sales, purchase, return, or other business mutation
-uses this cache or enters the outbox in Phase 3B.
+uses this cache or is offline-enabled. Phase 4B has an encrypted transport
+foundation only; it registers no real business executor and does not replay any
+business command. Its eventual replay contract is documented in
+[offline mutation sync](./offline-mutation-sync.md).
 
 ## Phase 4A reference datasets
 

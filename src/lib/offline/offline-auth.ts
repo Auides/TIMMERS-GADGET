@@ -93,6 +93,8 @@ export async function changeOfflinePasscode(store: OfflineAuthStore, userId: str
 export async function disableOfflineAccess(store: OfflineAuthStore, userId: string, deviceId: string) {
   if (store.deleteOfflineAccess) return store.deleteOfflineAccess(userId, deviceId);
   await store.purgeOfflineBusinessCache?.(userId, deviceId);
+  // Enrolment removal/deactivation discards unreplayable encrypted operations.
+  await store.purgeEncryptedMutationTransport?.(userId, deviceId);
   await store.deleteOfflineAuthProfile(userId, deviceId);
 }
 

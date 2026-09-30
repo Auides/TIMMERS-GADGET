@@ -93,9 +93,16 @@ reusable search layer; full customer management remains future online work.
 
 ## Synchronization lifecycle
 
-Future enabled modules will create an outbox item locally, retaining its UUID and idempotency key for every retry. The sync engine processes pending items in deterministic `createdAt`, then UUID order and permits only one loop at a time. Network failures return an item to `PENDING` with an incremented retry count; business conflicts become `CONFLICT`; unexpected permanent failures may become `FAILED`; successful items become `SYNCED` with reconciliation metadata.
+Phase 4B supersedes the Phase 1 plaintext outbox prototype for all future
+business work. The prototype is inert: no production feature has written a
+business operation to it, and no future feature may use it. The V4 encrypted
+mutation transport stores only encrypted request payloads. It has no registered
+business executor in this release and sends no business RPC or mutation to
+Supabase.
 
-Phase 1 has no live operation adapter and sends no business RPCs to Supabase. Startup, connectivity restoration, and a later explicit user action are intended sync triggers once approved operation handlers exist.
+See [offline mutation sync](./offline-mutation-sync.md) for the encrypted
+envelope, strict state machine, recovery rules, and replay authorization
+contract.
 
 ## Connectivity and conflicts
 

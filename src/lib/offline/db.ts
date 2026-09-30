@@ -1,5 +1,5 @@
 import Dexie, { type Table } from "dexie";
-import type { DeviceIdentity, EncryptedBusinessCacheRecord, OfflineAuthProfile, OfflineBusinessCacheStore, OfflineMetadata, OfflineStore, OutboxRecord, OutboxStatus, SyncConflict } from "./types.ts";
+import type { DeviceIdentity, EncryptedBusinessCacheRecord, EncryptedMutationConflict, EncryptedMutationEnvelope, EncryptedMutationStore, OfflineAuthProfile, OfflineBusinessCacheStore, OfflineMetadata, OfflineStore, OutboxRecord, OutboxStatus, SyncConflict } from "./types.ts";
 
 export class TimmersGadgetOfflineDatabase extends Dexie {
   metadata!: Table<OfflineMetadata, string>;
@@ -8,6 +8,8 @@ export class TimmersGadgetOfflineDatabase extends Dexie {
   syncConflicts!: Table<SyncConflict, string>;
   offlineAuthProfiles!: Table<OfflineAuthProfile, [string, string]>;
   encryptedBusinessCache!: Table<EncryptedBusinessCacheRecord, [string, string, string]>;
+  encryptedMutationOutbox!: Table<EncryptedMutationEnvelope, string>;
+  encryptedMutationConflicts!: Table<EncryptedMutationConflict, string>;
 
   constructor() {
     super("timmers-gadget-offline");
@@ -32,6 +34,17 @@ export class TimmersGadgetOfflineDatabase extends Dexie {
       offlineAuthProfiles: "[userId+deviceId], userId, deviceId, role, activeSnapshot, updatedAt",
       encryptedBusinessCache: "[userId+deviceId+resource], [userId+deviceId], userId, deviceId, resource, snapshotId, encryptedAt",
     });
+    this.version(4).stores({
+      metadata: "&key, updatedAt",
+      device: "&id, updatedAt",
+      // Legacy Phase 1 prototype only. It contains no production business mutations.
+      outbox: "&id, status, createdAt, [status+createdAt], idempotencyKey",
+      syncConflicts: "&id, outboxId, detectedAt",
+      offlineAuthProfiles: "[userId+deviceId], userId, deviceId, role, activeSnapshot, updatedAt",
+      encryptedBusinessCache: "[userId+deviceId+resource], [userId+deviceId], userId, deviceId, resource, snapshotId, encryptedAt",
+      encryptedMutationOutbox: "&operationId, [userId+deviceId], userId, deviceId, state, createdAt, nextAttemptAt, [state+nextAttemptAt]",
+      encryptedMutationConflicts: "&operationId, [userId+deviceId], userId, deviceId, state, detectedAt",
+    });
     this.on("populate", () => this.metadata.put({ key: "local_schema_version", value: "1", updatedAt: new Date().toISOString() }));
   }
 }
@@ -44,7 +57,7 @@ export function getOfflineDatabase() {
   return database;
 }
 
-export class DexieOfflineStore implements OfflineStore, OfflineBusinessCacheStore {
+export class DexieOfflineStore implements OfflineStore, OfflineBusinessCacheStore, EncryptedMutationStore {
   private readonly database: TimmersGadgetOfflineDatabase;
 
   constructor(database: TimmersGadgetOfflineDatabase = getOfflineDatabase()) {
@@ -59,6 +72,23 @@ export class DexieOfflineStore implements OfflineStore, OfflineBusinessCacheStor
     return (await this.database.outbox.where("status").equals(status).toArray()).sort(compareOutboxRecords);
   }
   async addConflict(conflict: SyncConflict) { await this.database.syncConflicts.add(conflict); }
+  async addEncryptedMutation(record: EncryptedMutationEnvelope) { await this.database.encryptedMutationOutbox.add(record); }
+  async getEncryptedMutation(operationId: string) { return this.database.encryptedMutationOutbox.get(operationId); }
+  async updateEncryptedMutation(record: EncryptedMutationEnvelope) { await this.database.encryptedMutationOutbox.put(record); }
+  async listEncryptedMutations(userId: string, deviceId: string) {
+    return (await this.database.encryptedMutationOutbox.where("[userId+deviceId]").equals([userId, deviceId]).toArray()).sort(compareEncryptedMutationEnvelopes);
+  }
+  async addEncryptedMutationConflict(conflict: EncryptedMutationConflict) { await this.database.encryptedMutationConflicts.put(conflict); }
+  async listEncryptedMutationConflicts(userId: string, deviceId: string) {
+    return (await this.database.encryptedMutationConflicts.where("[userId+deviceId]").equals([userId, deviceId]).toArray())
+      .sort((left, right) => left.detectedAt.localeCompare(right.detectedAt) || left.operationId.localeCompare(right.operationId));
+  }
+  async purgeEncryptedMutationTransport(userId: string, deviceId: string) {
+    await this.database.transaction("rw", this.database.encryptedMutationOutbox, this.database.encryptedMutationConflicts, async () => {
+      await this.database.encryptedMutationOutbox.where("[userId+deviceId]").equals([userId, deviceId]).delete();
+      await this.database.encryptedMutationConflicts.where("[userId+deviceId]").equals([userId, deviceId]).delete();
+    });
+  }
   async getOfflineAuthProfile(userId: string, deviceId: string) {
     return this.database.offlineAuthProfiles.get([userId, deviceId]);
   }
@@ -87,8 +117,10 @@ export class DexieOfflineStore implements OfflineStore, OfflineBusinessCacheStor
     await this.database.encryptedBusinessCache.where("[userId+deviceId]").equals([userId, deviceId]).delete();
   }
   async deleteOfflineAccess(userId: string, deviceId: string) {
-    await this.database.transaction("rw", this.database.offlineAuthProfiles, this.database.encryptedBusinessCache, async () => {
+    await this.database.transaction("rw", this.database.offlineAuthProfiles, this.database.encryptedBusinessCache, this.database.encryptedMutationOutbox, this.database.encryptedMutationConflicts, async () => {
       await this.database.encryptedBusinessCache.where("[userId+deviceId]").equals([userId, deviceId]).delete();
+      await this.database.encryptedMutationOutbox.where("[userId+deviceId]").equals([userId, deviceId]).delete();
+      await this.database.encryptedMutationConflicts.where("[userId+deviceId]").equals([userId, deviceId]).delete();
       await this.database.offlineAuthProfiles.delete([userId, deviceId]);
     });
   }
@@ -96,4 +128,8 @@ export class DexieOfflineStore implements OfflineStore, OfflineBusinessCacheStor
 
 export function compareOutboxRecords(left: OutboxRecord, right: OutboxRecord) {
   return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id);
+}
+
+export function compareEncryptedMutationEnvelopes(left: EncryptedMutationEnvelope, right: EncryptedMutationEnvelope) {
+  return left.createdAt.localeCompare(right.createdAt) || left.operationId.localeCompare(right.operationId);
 }

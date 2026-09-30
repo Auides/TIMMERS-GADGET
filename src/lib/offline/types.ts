@@ -75,9 +75,61 @@ export type OfflineAuthStore = {
   deleteOfflineAuthProfile(userId: string, deviceId: string): Promise<void>;
   /** Present in the browser store so authorization changes can remove encrypted business data. */
   purgeOfflineBusinessCache?: (userId: string, deviceId: string) => Promise<void>;
+  /** Enrollment removal also makes encrypted, unsynchronized operations unreplayable. */
+  purgeEncryptedMutationTransport?: (userId: string, deviceId: string) => Promise<void>;
   deleteOfflineAccess?: (userId: string, deviceId: string) => Promise<void>;
 };
 export type OfflineStore = DeviceIdentityStore & OutboxStore & SyncConflictStore;
+
+/**
+ * V4 is the only queue that may ever carry a business mutation.  Its payload
+ * is AES-GCM ciphertext; the legacy Phase 1 outbox above remains an inert
+ * transport prototype and is deliberately not a source for this queue.
+ */
+export const encryptedMutationStates = ["PENDING", "SYNCING", "APPLIED", "CONFLICT", "REJECTED"] as const;
+export type EncryptedMutationState = (typeof encryptedMutationStates)[number];
+export const ENCRYPTED_MUTATION_SCHEMA_VERSION = 1 as const;
+
+export type EncryptedMutationEnvelope = {
+  operationId: string;
+  idempotencyKey: string;
+  userId: string;
+  deviceId: string;
+  mutationType: string;
+  schemaVersion: typeof ENCRYPTED_MUTATION_SCHEMA_VERSION;
+  createdAt: string;
+  state: EncryptedMutationState;
+  retryCount: number;
+  nextAttemptAt: string | null;
+  lastAttemptAt: string | null;
+  statusCode: string | null;
+  ciphertext: string;
+  iv: string;
+};
+
+/** No business data or server error text is permitted outside this ciphertext. */
+export type EncryptedMutationConflict = {
+  operationId: string;
+  userId: string;
+  deviceId: string;
+  mutationType: string;
+  schemaVersion: typeof ENCRYPTED_MUTATION_SCHEMA_VERSION;
+  state: "CONFLICT";
+  reasonCode: string;
+  detectedAt: string;
+  ciphertext: string | null;
+  iv: string | null;
+};
+
+export type EncryptedMutationStore = {
+  addEncryptedMutation(record: EncryptedMutationEnvelope): Promise<void>;
+  getEncryptedMutation(operationId: string): Promise<EncryptedMutationEnvelope | undefined>;
+  updateEncryptedMutation(record: EncryptedMutationEnvelope): Promise<void>;
+  listEncryptedMutations(userId: string, deviceId: string): Promise<EncryptedMutationEnvelope[]>;
+  addEncryptedMutationConflict(conflict: EncryptedMutationConflict): Promise<void>;
+  listEncryptedMutationConflicts(userId: string, deviceId: string): Promise<EncryptedMutationConflict[]>;
+  purgeEncryptedMutationTransport?: (userId: string, deviceId: string) => Promise<void>;
+};
 
 export type OfflineBusinessResource = "catalogue" | "inventory" | "customers" | "suppliers";
 export type OfflineCatalogueRecord = {
