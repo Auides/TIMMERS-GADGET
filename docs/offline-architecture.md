@@ -35,6 +35,37 @@ This cache does not use the outbox and does not introduce offline commands.
 Sales, checkout, stock changes, catalogue changes, purchases, returns, and all
 other business mutations remain online-only.
 
+## Phase 3B normal-route read fallback
+
+Catalogue and inventory now retain their normal authoritative server-rendered
+paths while connected. If connectivity is lost after either screen loads, a
+client-only overlay reads the unlocked user's encrypted V3 snapshot from memory
+and renders a read-only local equivalent. A navigation to `/app/catalogue` or
+`/app/inventory` that cannot reach the network is redirected by the service
+worker to the safe, precached `/offline/catalogue` or `/offline/inventory`
+route. The service worker still never caches authenticated `/app` HTML or the
+snapshot API response.
+
+The fallback reports that its data is offline, shows the last successful sync
+time and staleness, and says explicitly that cached inventory is this device's
+last synchronized state rather than globally current stock. It permits only
+local product/SKU/barcode and IMEI/serial searching. No arbitrary expiry is
+applied.
+
+An offline locked vault shows `Offline data is locked.` and links to the
+offline unlock flow, preserving a restricted return path. An unlocked vault
+with no complete snapshot shows a distinct no-cache state; it never represents
+missing data as zero stock. Refresh remains a deliberate online action and
+requires the existing valid session, active user verification, and unlocked
+vault supplied by the Phase 3A refresh boundary.
+
+Catalogue changes, price changes, archives, opening stock, adjustment
+requests, direct/serialized adjustments, and every other business mutation
+remain online-only. These paths are not sent to the outbox. STAFF and MANAGER
+can use the minimized encrypted read cache; ADMIN is intentionally online-only.
+TODO: the final approved offline architecture must include Admin offline
+functionality so the full product-owner offline requirement is met.
+
 ## Synchronization lifecycle
 
 Future enabled modules will create an outbox item locally, retaining its UUID and idempotency key for every retry. The sync engine processes pending items in deterministic `createdAt`, then UUID order and permits only one loop at a time. Network failures return an item to `PENDING` with an incremented retry count; business conflicts become `CONFLICT`; unexpected permanent failures may become `FAILED`; successful items become `SYNCED` with reconciliation metadata.

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAuthenticatedProfile } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { OfflineNormalRouteFallback } from "@/app/offline/offline-normal-read";
 import { QuickCatalogueForms } from "./catalogue-forms";
 import { catalogueProductHref, catalogueStatus, matchesCatalogueStatus, type CatalogueStatus } from "./catalogue-status";
 
@@ -167,6 +168,7 @@ export default async function CataloguePage({ searchParams }: { searchParams: Pr
   }
 
   return (
+    <>
     <main className="app-page">
       <div>
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -194,5 +196,7 @@ export default async function CataloguePage({ searchParams }: { searchParams: Pr
         {isManagement ? <ManagementCatalogue products={managementProducts} search={search} status={status} /> : <StaffCatalogue rows={staffRows} />}
       </div>
     </main>
+    <OfflineNormalRouteFallback mode="catalogue" returnTo="/app/catalogue" />
+    </>
   );
 }
