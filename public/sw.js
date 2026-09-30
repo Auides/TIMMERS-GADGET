@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "timmers-gadget-shell-";
-const CACHE_NAME = `${CACHE_PREFIX}v2`;
+const CACHE_NAME = `${CACHE_PREFIX}v3`;
 const OFFLINE_FALLBACK = "/offline";
 const LOCAL_OFFLINE_ROUTES = ["/offline", "/offline/unlock", "/offline/workspace"];
 

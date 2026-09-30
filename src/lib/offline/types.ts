@@ -37,6 +37,8 @@ export type SyncConflict = {
 
 export const offlineRoles = ["ADMIN", "MANAGER", "STAFF"] as const;
 export type OfflineRole = (typeof offlineRoles)[number];
+export const offlineReadRoles = ["MANAGER", "STAFF"] as const;
+export type OfflineReadRole = (typeof offlineReadRoles)[number];
 
 /** Encrypted, device-local enrollment metadata. It never contains a passcode or plaintext key. */
 export type OfflineAuthProfile = {
@@ -71,5 +73,71 @@ export type OfflineAuthStore = {
   listOfflineAuthProfiles(deviceId: string): Promise<OfflineAuthProfile[]>;
   saveOfflineAuthProfile(profile: OfflineAuthProfile): Promise<void>;
   deleteOfflineAuthProfile(userId: string, deviceId: string): Promise<void>;
+  /** Present in the browser store so authorization changes can remove encrypted business data. */
+  purgeOfflineBusinessCache?: (userId: string, deviceId: string) => Promise<void>;
+  deleteOfflineAccess?: (userId: string, deviceId: string) => Promise<void>;
 };
 export type OfflineStore = DeviceIdentityStore & OutboxStore & SyncConflictStore;
+
+export type OfflineBusinessResource = "catalogue" | "inventory";
+export type OfflineCatalogueRecord = {
+  productId: string;
+  productName: string;
+  productSku: string;
+  productBarcode: string | null;
+  brandName: string | null;
+  categoryName: string | null;
+  serialized: false;
+  variantId: string | null;
+  variantLabel: string | null;
+  variantSku: string | null;
+  variantBarcode: string | null;
+  condition: string;
+  quantity: number;
+  sellingPrice: number;
+};
+
+export type OfflineSerializedInventoryRecord = {
+  unitId: string;
+  productId: string;
+  productName: string;
+  productSku: string;
+  productBarcode: string | null;
+  productModel: string | null;
+  brandName: string | null;
+  categoryName: string | null;
+  variantId: string | null;
+  variantLabel: string | null;
+  variantSku: string | null;
+  variantBarcode: string | null;
+  condition: string;
+  status: string;
+  sellingPrice: number | null;
+  identifierType: string;
+  identifierValue: string;
+};
+
+export type OfflineReadSnapshot = {
+  capturedAt: string;
+  catalogue: OfflineCatalogueRecord[];
+  serializedInventory: OfflineSerializedInventoryRecord[];
+};
+
+/** Metadata is non-business data; the payload is always encrypted with the in-memory vault key. */
+export type EncryptedBusinessCacheRecord = {
+  userId: string;
+  deviceId: string;
+  resource: OfflineBusinessResource;
+  snapshotId: string;
+  role: OfflineReadRole;
+  capturedAt: string;
+  encryptedAt: string;
+  ciphertext: string;
+  iv: string;
+};
+
+export type OfflineBusinessCacheStore = {
+  replaceOfflineBusinessCache(records: EncryptedBusinessCacheRecord[]): Promise<void>;
+  listOfflineBusinessCache(userId: string, deviceId: string): Promise<EncryptedBusinessCacheRecord[]>;
+  purgeOfflineBusinessCache(userId: string, deviceId: string): Promise<void>;
+};

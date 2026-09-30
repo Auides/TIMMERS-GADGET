@@ -23,6 +23,18 @@ business data is stored offline in this phase. A later replication implementatio
 must use this RPC as its source, retain the offline-access vault safeguards, and
 must not treat it as an RLS replacement or an inventory-command interface.
 
+## Phase 3A read-only workspace
+
+The offline workspace displays only an unlocked user's encrypted snapshot of
+catalogue/non-serialized stock and serialized inventory. Refresh is explicit
+and online-only through `/api/offline/read-snapshot`; its response is private
+and `no-store`, and the service worker never caches that API response. The
+service worker caches only the safe offline shell routes and static assets.
+
+This cache does not use the outbox and does not introduce offline commands.
+Sales, checkout, stock changes, catalogue changes, purchases, returns, and all
+other business mutations remain online-only.
+
 ## Synchronization lifecycle
 
 Future enabled modules will create an outbox item locally, retaining its UUID and idempotency key for every retry. The sync engine processes pending items in deterministic `createdAt`, then UUID order and permits only one loop at a time. Network failures return an item to `PENDING` with an incremented retry count; business conflicts become `CONFLICT`; unexpected permanent failures may become `FAILED`; successful items become `SYNCED` with reconciliation metadata.

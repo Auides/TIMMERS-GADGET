@@ -4,8 +4,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { DexieOfflineStore } from "./db";
 import { getInstallationDevice } from "./device";
 import { unlockOfflineAccess } from "./offline-auth";
+import { fetchOfflineReadSnapshot, readOfflineReadCache, refreshOfflineReadCache } from "./business-cache";
 import { crossedLagosBusinessDate, millisecondsUntilNextLagosBusinessDate, OFFLINE_INACTIVITY_MS, requiresOperationalRelock } from "./session";
-import type { OfflineAuthProfile } from "./types";
+import { offlineReadRoles, type OfflineAuthProfile, type OfflineReadRole, type OfflineReadSnapshot } from "./types";
 
 type UnlockedOfflineAccess = Pick<OfflineAuthProfile, "userId" | "displayName" | "role" | "deviceId" | "lastOnlineVerifiedAt"> & { unlockedAt: string; lastActivityAt: string };
 type OfflineVaultContextValue = {
@@ -13,6 +14,8 @@ type OfflineVaultContextValue = {
   isUnlocked: boolean;
   lock: () => void;
   unlock: (userId: string, passcode: string) => Promise<{ ok: boolean; reason?: "INVALID" | "THROTTLED" }>;
+  readBusinessCache: () => Promise<OfflineReadSnapshot | null>;
+  refreshBusinessCache: () => Promise<{ capturedAt: string; catalogueCount: number; serializedInventoryCount: number }>;
 };
 const OfflineVaultContext = createContext<OfflineVaultContextValue | undefined>(undefined);
 
@@ -30,6 +33,22 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     setUnlocked({ userId: result.profile.userId, displayName: result.profile.displayName, role: result.profile.role, deviceId: result.profile.deviceId, lastOnlineVerifiedAt: result.profile.lastOnlineVerifiedAt, unlockedAt: now, lastActivityAt: now });
     return { ok: true };
   }, []);
+  const readBusinessCache = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) return null;
+    if (!(offlineReadRoles as readonly string[]).includes(unlocked.role)) return null;
+    return readOfflineReadCache(new DexieOfflineStore(), { ...unlocked, role: unlocked.role as OfflineReadRole, vaultKey: vaultKey.current });
+  }, [unlocked]);
+  const refreshBusinessCache = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before refreshing local data.");
+    if (!(offlineReadRoles as readonly string[]).includes(unlocked.role)) throw new Error("This role is not approved for offline business reads.");
+    const snapshot = await fetchOfflineReadSnapshot();
+    return refreshOfflineReadCache(new DexieOfflineStore(), { ...unlocked, role: unlocked.role as OfflineReadRole, vaultKey: vaultKey.current }, snapshot);
+  }, [unlocked]);
+
+  useEffect(() => {
+    window.addEventListener("timmers-offline-access-revoked", lock);
+    return () => window.removeEventListener("timmers-offline-access-revoked", lock);
+  }, [lock]);
 
   useEffect(() => {
     if (!unlocked || unlocked.role === "ADMIN") return;
@@ -57,7 +76,7 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     return () => window.clearTimeout(timer);
   }, [lock, unlocked]);
 
-  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock }), [lock, unlock, unlocked]);
+  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache]);
   return <OfflineVaultContext.Provider value={value}>{children}</OfflineVaultContext.Provider>;
 }
 

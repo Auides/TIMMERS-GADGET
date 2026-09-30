@@ -11,7 +11,8 @@ export function OfflineAuthorizationRevalidator({ identity }: { identity: Online
     void (async () => {
       try {
         const device = await getInstallationDevice();
-        await reverifyOfflineAccess(new DexieOfflineStore(), identity, device.id);
+        const result = await reverifyOfflineAccess(new DexieOfflineStore(), identity, device.id);
+        if (result.kind === "REVOKED" || (result.kind === "REFRESHED" && result.cachePurged)) window.dispatchEvent(new Event("timmers-offline-access-revoked"));
       } catch {
         // Server authorization remains authoritative; this local metadata refresh is best effort.
       }

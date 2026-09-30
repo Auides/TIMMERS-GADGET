@@ -1,5 +1,5 @@
 import Dexie, { type Table } from "dexie";
-import type { DeviceIdentity, OfflineAuthProfile, OfflineMetadata, OfflineStore, OutboxRecord, OutboxStatus, SyncConflict } from "./types.ts";
+import type { DeviceIdentity, EncryptedBusinessCacheRecord, OfflineAuthProfile, OfflineBusinessCacheStore, OfflineMetadata, OfflineStore, OutboxRecord, OutboxStatus, SyncConflict } from "./types.ts";
 
 export class TimmersGadgetOfflineDatabase extends Dexie {
   metadata!: Table<OfflineMetadata, string>;
@@ -7,6 +7,7 @@ export class TimmersGadgetOfflineDatabase extends Dexie {
   outbox!: Table<OutboxRecord, string>;
   syncConflicts!: Table<SyncConflict, string>;
   offlineAuthProfiles!: Table<OfflineAuthProfile, [string, string]>;
+  encryptedBusinessCache!: Table<EncryptedBusinessCacheRecord, [string, string, string]>;
 
   constructor() {
     super("timmers-gadget-offline");
@@ -23,6 +24,14 @@ export class TimmersGadgetOfflineDatabase extends Dexie {
       syncConflicts: "&id, outboxId, detectedAt",
       offlineAuthProfiles: "[userId+deviceId], userId, deviceId, role, activeSnapshot, updatedAt",
     });
+    this.version(3).stores({
+      metadata: "&key, updatedAt",
+      device: "&id, updatedAt",
+      outbox: "&id, status, createdAt, [status+createdAt], idempotencyKey",
+      syncConflicts: "&id, outboxId, detectedAt",
+      offlineAuthProfiles: "[userId+deviceId], userId, deviceId, role, activeSnapshot, updatedAt",
+      encryptedBusinessCache: "[userId+deviceId+resource], [userId+deviceId], userId, deviceId, resource, snapshotId, encryptedAt",
+    });
     this.on("populate", () => this.metadata.put({ key: "local_schema_version", value: "1", updatedAt: new Date().toISOString() }));
   }
 }
@@ -35,7 +44,7 @@ export function getOfflineDatabase() {
   return database;
 }
 
-export class DexieOfflineStore implements OfflineStore {
+export class DexieOfflineStore implements OfflineStore, OfflineBusinessCacheStore {
   private readonly database: TimmersGadgetOfflineDatabase;
 
   constructor(database: TimmersGadgetOfflineDatabase = getOfflineDatabase()) {
@@ -60,6 +69,28 @@ export class DexieOfflineStore implements OfflineStore {
   async saveOfflineAuthProfile(profile: OfflineAuthProfile) { await this.database.offlineAuthProfiles.put(profile); }
   async deleteOfflineAuthProfile(userId: string, deviceId: string) {
     await this.database.offlineAuthProfiles.delete([userId, deviceId]);
+  }
+  async replaceOfflineBusinessCache(records: EncryptedBusinessCacheRecord[]) {
+    if (records.length !== 2 || new Set(records.map((record) => record.resource)).size !== 2) throw new Error("An encrypted offline snapshot must contain every resource.");
+    const { userId, deviceId } = records[0];
+    if (records.some((record) => record.userId !== userId || record.deviceId !== deviceId || record.snapshotId !== records[0].snapshotId || record.capturedAt !== records[0].capturedAt || record.role !== records[0].role)) throw new Error("Offline snapshot scope is inconsistent.");
+    await this.database.transaction("rw", this.database.encryptedBusinessCache, async () => {
+      await this.database.encryptedBusinessCache.where("[userId+deviceId]").equals([userId, deviceId]).delete();
+      await this.database.encryptedBusinessCache.bulkPut(records);
+    });
+  }
+  async listOfflineBusinessCache(userId: string, deviceId: string) {
+    return (await this.database.encryptedBusinessCache.where("[userId+deviceId]").equals([userId, deviceId]).toArray())
+      .sort((left, right) => left.resource.localeCompare(right.resource));
+  }
+  async purgeOfflineBusinessCache(userId: string, deviceId: string) {
+    await this.database.encryptedBusinessCache.where("[userId+deviceId]").equals([userId, deviceId]).delete();
+  }
+  async deleteOfflineAccess(userId: string, deviceId: string) {
+    await this.database.transaction("rw", this.database.offlineAuthProfiles, this.database.encryptedBusinessCache, async () => {
+      await this.database.encryptedBusinessCache.where("[userId+deviceId]").equals([userId, deviceId]).delete();
+      await this.database.offlineAuthProfiles.delete([userId, deviceId]);
+    });
   }
 }
 

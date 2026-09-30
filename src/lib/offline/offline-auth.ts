@@ -91,6 +91,8 @@ export async function changeOfflinePasscode(store: OfflineAuthStore, userId: str
 }
 
 export async function disableOfflineAccess(store: OfflineAuthStore, userId: string, deviceId: string) {
+  if (store.deleteOfflineAccess) return store.deleteOfflineAccess(userId, deviceId);
+  await store.purgeOfflineBusinessCache?.(userId, deviceId);
   await store.deleteOfflineAuthProfile(userId, deviceId);
 }
 
@@ -99,11 +101,13 @@ export async function reverifyOfflineAccess(store: OfflineAuthStore, identity: O
   const existing = await store.getOfflineAuthProfile(identity.profileUserId, deviceId);
   if (!existing) return { kind: "MISSING" as const };
   if (!isEligibleIdentity(identity)) {
-    await store.deleteOfflineAuthProfile(existing.userId, deviceId);
+    await disableOfflineAccess(store, existing.userId, deviceId);
     return { kind: "REVOKED" as const };
   }
+  const cachePurged = existing.role !== identity.role;
+  if (cachePurged) await store.purgeOfflineBusinessCache?.(existing.userId, deviceId);
   const now = (dependencies.now ?? defaultNow)();
   const profile = { ...existing, displayName: identity.displayName.trim(), role: identity.role, activeSnapshot: true, lastOnlineVerifiedAt: now, updatedAt: now };
   await store.saveOfflineAuthProfile(profile);
-  return { kind: "REFRESHED" as const, profile };
+  return { kind: "REFRESHED" as const, profile, cachePurged };
 }

@@ -42,6 +42,21 @@ active-profile guard, uses a hardened `SECURITY DEFINER` search path, exposes
 execution only to `authenticated`, and never replaces RLS or authorizes a
 client-provided role.
 
+## Encrypted read cache
+
+Phase 3A permits only Staff and Manager offline catalogue and inventory reads.
+Admin remains online-only. The browser asks the authenticated server route for
+the existing safe non-serialized catalogue projection and the safe serialized
+snapshot projection; it supplies no role, user ID, or authorization claim.
+
+The client stores each resource only as AES-GCM ciphertext in IndexedDB V3.
+Its additional authenticated data binds the payload to the enrolled user,
+device, and resource, and the vault key remains memory-only. Refresh encrypts
+both resources before one IndexedDB transaction replaces the previous complete
+snapshot. A role change, deactivation, or local-enrollment removal purges that
+user's encrypted business cache and locks the in-memory vault. The cache contains no WAC, acquisition cost,
+COGS, supplier, purchase, or mutation data.
+
 ## Local throttling and session foundation
 
 Repeated failed unlocks use an increasing, capped device-local delay; a successful unlock resets the counter. This slows casual guessing but cannot turn a weak passcode into a strong one, and an attacker controlling local browser storage may attempt to reset it.
