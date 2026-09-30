@@ -27,7 +27,7 @@ function makeSnapshotId() {
 }
 
 function validateSnapshot(snapshot: OfflineReadSnapshot) {
-  if (!snapshot || !Array.isArray(snapshot.catalogue) || !Array.isArray(snapshot.serializedInventory) || Number.isNaN(Date.parse(snapshot.capturedAt))) {
+  if (!snapshot || !Array.isArray(snapshot.catalogue) || !Array.isArray(snapshot.serializedInventory) || !Array.isArray(snapshot.customers) || !Array.isArray(snapshot.suppliers) || Number.isNaN(Date.parse(snapshot.capturedAt))) {
     throw new Error("The online inventory snapshot has an invalid shape.");
   }
 }
@@ -37,7 +37,7 @@ async function encryptedRecord(identity: CacheIdentityWithKey, resource: Offline
   return { userId: identity.userId, deviceId: identity.deviceId, role: identity.role, resource, snapshotId, capturedAt, encryptedAt, ...encrypted } satisfies EncryptedBusinessCacheRecord;
 }
 
-/** Fetch, encrypt, then atomically replace both read-only resources; failed work leaves the prior snapshot untouched. */
+/** Fetch, encrypt, then atomically replace all read-only resources; failed work leaves the prior snapshot untouched. */
 export async function refreshOfflineReadCache(store: OfflineBusinessCacheStore, identity: CacheIdentityWithKey, snapshot: OfflineReadSnapshot, dependencies: RefreshDependencies = {}) {
   if (!isOfflineReadRole(identity.role)) throw new Error("This role is not approved for offline business reads.");
   validateSnapshot(snapshot);
@@ -46,9 +46,11 @@ export async function refreshOfflineReadCache(store: OfflineBusinessCacheStore, 
   const records = await Promise.all([
     encryptedRecord(identity, "catalogue", snapshotId, snapshot.capturedAt, encryptedAt, snapshot.catalogue),
     encryptedRecord(identity, "inventory", snapshotId, snapshot.capturedAt, encryptedAt, snapshot.serializedInventory),
+    encryptedRecord(identity, "customers", snapshotId, snapshot.capturedAt, encryptedAt, snapshot.customers),
+    encryptedRecord(identity, "suppliers", snapshotId, snapshot.capturedAt, encryptedAt, snapshot.suppliers),
   ]);
   await store.replaceOfflineBusinessCache(records);
-  return { capturedAt: snapshot.capturedAt, snapshotId, catalogueCount: snapshot.catalogue.length, serializedInventoryCount: snapshot.serializedInventory.length };
+  return { capturedAt: snapshot.capturedAt, snapshotId, catalogueCount: snapshot.catalogue.length, serializedInventoryCount: snapshot.serializedInventory.length, customerCount: snapshot.customers.length, supplierCount: snapshot.suppliers.length };
 }
 
 async function decryptResource(record: EncryptedRecordWithKey) {
@@ -66,9 +68,12 @@ export async function readOfflineReadCache(store: OfflineBusinessCacheStore, ide
     .map((record) => ({ ...record, vaultKey: identity.vaultKey } satisfies EncryptedRecordWithKey));
   const catalogue = matches.find((record) => record.resource === "catalogue");
   const inventory = matches.find((record) => record.resource === "inventory");
-  if (!catalogue || !inventory || catalogue.snapshotId !== inventory.snapshotId || catalogue.capturedAt !== inventory.capturedAt) return null;
-  const [cataloguePayload, inventoryPayload] = await Promise.all([decryptResource(catalogue), decryptResource(inventory)]);
-  return { capturedAt: catalogue.capturedAt, catalogue: cataloguePayload.records as OfflineReadSnapshot["catalogue"], serializedInventory: inventoryPayload.records as OfflineReadSnapshot["serializedInventory"] };
+  const customers = matches.find((record) => record.resource === "customers");
+  const suppliers = matches.find((record) => record.resource === "suppliers");
+  const records = [catalogue, inventory, customers, suppliers];
+  if (records.some((record) => !record) || new Set(records.map((record) => record!.snapshotId)).size !== 1 || new Set(records.map((record) => record!.capturedAt)).size !== 1) return null;
+  const [cataloguePayload, inventoryPayload, customerPayload, supplierPayload] = await Promise.all(records.map((record) => decryptResource(record!)));
+  return { capturedAt: catalogue!.capturedAt, catalogue: cataloguePayload.records as OfflineReadSnapshot["catalogue"], serializedInventory: inventoryPayload.records as OfflineReadSnapshot["serializedInventory"], customers: customerPayload.records as OfflineReadSnapshot["customers"], suppliers: supplierPayload.records as OfflineReadSnapshot["suppliers"] };
 }
 
 export async function fetchOfflineReadSnapshot() {

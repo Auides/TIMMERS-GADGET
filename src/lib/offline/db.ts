@@ -71,7 +71,7 @@ export class DexieOfflineStore implements OfflineStore, OfflineBusinessCacheStor
     await this.database.offlineAuthProfiles.delete([userId, deviceId]);
   }
   async replaceOfflineBusinessCache(records: EncryptedBusinessCacheRecord[]) {
-    if (records.length !== 2 || new Set(records.map((record) => record.resource)).size !== 2) throw new Error("An encrypted offline snapshot must contain every resource.");
+    if (records.length !== 4 || new Set(records.map((record) => record.resource)).size !== 4) throw new Error("An encrypted offline snapshot must contain every resource.");
     const { userId, deviceId } = records[0];
     if (records.some((record) => record.userId !== userId || record.deviceId !== deviceId || record.snapshotId !== records[0].snapshotId || record.capturedAt !== records[0].capturedAt || record.role !== records[0].role)) throw new Error("Offline snapshot scope is inconsistent.");
     await this.database.transaction("rw", this.database.encryptedBusinessCache, async () => {

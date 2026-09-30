@@ -15,7 +15,7 @@ type OfflineVaultContextValue = {
   lock: () => void;
   unlock: (userId: string, passcode: string) => Promise<{ ok: boolean; reason?: "INVALID" | "THROTTLED" }>;
   readBusinessCache: () => Promise<OfflineReadSnapshot | null>;
-  refreshBusinessCache: () => Promise<{ capturedAt: string; catalogueCount: number; serializedInventoryCount: number }>;
+  refreshBusinessCache: () => Promise<{ capturedAt: string; catalogueCount: number; serializedInventoryCount: number; customerCount: number; supplierCount: number }>;
 };
 const OfflineVaultContext = createContext<OfflineVaultContextValue | undefined>(undefined);
 

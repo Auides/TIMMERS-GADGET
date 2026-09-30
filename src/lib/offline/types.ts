@@ -79,7 +79,7 @@ export type OfflineAuthStore = {
 };
 export type OfflineStore = DeviceIdentityStore & OutboxStore & SyncConflictStore;
 
-export type OfflineBusinessResource = "catalogue" | "inventory";
+export type OfflineBusinessResource = "catalogue" | "inventory" | "customers" | "suppliers";
 export type OfflineCatalogueRecord = {
   productId: string;
   productName: string;
@@ -117,10 +117,17 @@ export type OfflineSerializedInventoryRecord = {
   identifierValue: string;
 };
 
+/** Operational reference data only; financial, credit, purchase, and history fields are excluded. */
+export type OfflineCustomerRecord = { customerId: string; fullName: string; phone: string | null; email: string | null };
+export type OfflineSupplierRecord = { supplierId: string; businessName: string; contactName: string | null; phone: string | null; email: string | null; active: boolean };
+
 export type OfflineReadSnapshot = {
   capturedAt: string;
   catalogue: OfflineCatalogueRecord[];
   serializedInventory: OfflineSerializedInventoryRecord[];
+  customers: OfflineCustomerRecord[];
+  /** Always empty for STAFF; the server decides whether a manager may receive it. */
+  suppliers: OfflineSupplierRecord[];
 };
 
 /** Metadata is non-business data; the payload is always encrypted with the in-memory vault key. */

@@ -51,6 +51,8 @@ test("safe routes receive offline fallback without caching authenticated applica
 
 test("unlock returns only to an allow-listed normal or offline read route", () => {
   assert.match(unlock, /getSafeReturnTo/);
-  assert.match(unlock, /\["\/offline\/workspace", "\/offline\/catalogue", "\/offline\/inventory", "\/app\/catalogue", "\/app\/inventory"\]/);
+  assert.match(unlock, /"\/offline\/customers"/);
+  assert.match(unlock, /"\/offline\/suppliers"/);
+  assert.match(unlock, /"\/app\/suppliers"/);
   assert.match(unlock, /router\.replace\(getSafeReturnTo\(\)\)/);
 });

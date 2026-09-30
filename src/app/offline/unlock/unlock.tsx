@@ -8,7 +8,7 @@ import { getInstallationDevice } from "@/lib/offline/device";
 import type { OfflineAuthProfile } from "@/lib/offline/types";
 import { useOfflineVault } from "@/lib/offline/offline-auth-provider";
 
-const SAFE_RETURN_ROUTES = ["/offline/workspace", "/offline/catalogue", "/offline/inventory", "/app/catalogue", "/app/inventory"];
+const SAFE_RETURN_ROUTES = ["/offline/workspace", "/offline/catalogue", "/offline/inventory", "/offline/customers", "/offline/suppliers", "/app/catalogue", "/app/inventory", "/app/suppliers"];
 
 function getSafeReturnTo() {
   if (typeof window === "undefined") return "/offline/workspace";

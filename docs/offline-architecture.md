@@ -66,6 +66,31 @@ can use the minimized encrypted read cache; ADMIN is intentionally online-only.
 TODO: the final approved offline architecture must include Admin offline
 functionality so the full product-owner offline requirement is met.
 
+## Phase 4A encrypted reference data
+
+The same complete encrypted snapshot now includes operational customer
+references (ID, full name, phone, and already-authorized email) plus supplier
+references only for MANAGER (ID, business/contact name, phone, email, and
+active state). STAFF receives an explicit empty supplier resource and cannot
+infer supplier records from local metadata. ADMIN remains online-only.
+
+Customer credit/debt, sales and payment history, financial aggregates, and
+internal notes are excluded. Supplier purchase costs, balances, payment/refund
+history, procurement totals, and notes are excluded. Customer and supplier
+names, phones, and emails have no plaintext IndexedDB metadata or search
+indexes: local search occurs only after decrypting the unlocked memory snapshot.
+
+All four resources are encrypted with distinct AES-GCM IVs and AAD bound to
+crypto version, user, device, and resource. One transaction replaces the whole
+snapshot only after every encrypted record is ready, so failed refreshes retain
+the prior complete snapshot. Role changes and deactivation purge the full cache.
+These references are future inputs to approved sales, purchases, and returns;
+they do not enable any offline mutation today.
+
+There is no existing normal customer-management route. Phase 4A therefore
+provides only the minimal encrypted read-only customer reference screen and
+reusable search layer; full customer management remains future online work.
+
 ## Synchronization lifecycle
 
 Future enabled modules will create an outbox item locally, retaining its UUID and idempotency key for every retry. The sync engine processes pending items in deterministic `createdAt`, then UUID order and permits only one loop at a time. Network failures return an item to `PENDING` with an incremented retry count; business conflicts become `CONFLICT`; unexpected permanent failures may become `FAILED`; successful items become `SYNCED` with reconciliation metadata.

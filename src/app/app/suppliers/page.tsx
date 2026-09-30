@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getAuthenticatedProfile } from "@/lib/auth";
 import { canManageProcurement } from "@/lib/authorization";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { OfflineNormalRouteFallback } from "@/app/offline/offline-normal-read";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
     .sort((left, right) => Number(right.active) - Number(left.active) || left.business_name.localeCompare(right.business_name));
 
   return (
+    <>
     <main className="app-page">
       <p className="app-eyebrow">PROCUREMENT</p>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -124,5 +126,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
         )}
       </section>
     </main>
+    <OfflineNormalRouteFallback mode="suppliers" returnTo="/app/suppliers" />
+    </>
   );
 }

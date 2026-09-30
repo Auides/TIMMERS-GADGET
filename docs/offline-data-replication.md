@@ -28,3 +28,18 @@ future work and must be designed and approved before it is enabled.
 
 No catalogue, inventory, sales, purchase, return, or other business mutation
 uses this cache or enters the outbox in Phase 3B.
+
+## Phase 4A reference datasets
+
+The atomic snapshot additionally carries minimized customer reference records
+for STAFF/MANAGER and supplier reference records only for MANAGER. The server
+derives the role from the authenticated active profile and returns an empty
+supplier dataset for STAFF; encryption never expands authorization. Every
+customer/supplier record remains ciphertext at rest, with fresh AES-GCM IVs and
+user/device/resource/version-bound AAD. No plaintext contact search index is
+persisted.
+
+Offline searches are in-memory after an unlock. The customer/supplier views use
+the same locked, no-cache, stale, and explicit-refresh states as existing
+offline reads. They are reference-only: customer/supplier mutations, purchases,
+payments, refunds, sales, and returns stay online-only and never use the outbox.

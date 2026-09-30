@@ -55,7 +55,18 @@ device, and resource, and the vault key remains memory-only. Refresh encrypts
 both resources before one IndexedDB transaction replaces the previous complete
 snapshot. A role change, deactivation, or local-enrollment removal purges that
 user's encrypted business cache and locks the in-memory vault. The cache contains no WAC, acquisition cost,
-COGS, supplier, purchase, or mutation data.
+COGS, supplier procurement, purchase, or mutation data.
+
+### Phase 4A reference-data minimization
+
+The encrypted cache may also contain only customer ID/name/phone/email and,
+for a Manager, supplier ID/business/contact name/phone/email/active state. It
+does not contain customer credit/debt, sales or payment history, supplier
+costs, balances, purchases, refunds, procurement totals, margins, or notes.
+STAFF receives no supplier records. Those fields are AES-GCM ciphertext at
+rest; Dexie indexes only non-business scope and snapshot metadata, never names,
+phones, or emails. Search structures are constructed only from decrypted data
+held after vault unlock.
 
 ## Local throttling and session foundation
 
