@@ -10,7 +10,7 @@
     "test:catalogue-price": "node --test tests/catalogue-price-payload.test.ts",
     "test:inventory": "node --test tests/inventory-ui.test.ts tests/inventory-overview.test.ts tests/inventory-server-actions.test.ts",
     "test:sales": "node --test tests/sales-checkout-payload.test.ts",
-    "test:offline": "node --test tests/offline-foundation.test.ts tests/offline-security.test.ts",
+    "test:offline": "node --test tests/offline-foundation.test.ts tests/offline-security.test.ts tests/staff-serialized-snapshot-boundary.test.ts",
     "test": "npm run test:catalogue-price && npm run test:inventory && npm run test:sales && npm run test:offline",
     "dev:vinext": "vinext dev --port 3001",
     "build:vinext": "vinext build",

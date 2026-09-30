@@ -15,6 +15,14 @@ The browser uses Dexie over IndexedDB with only four foundation tables: `metadat
 
 IndexedDB is not an automatically encrypted secure database. Do not store Supabase service-role keys, passwords, access credentials, private API tokens, or sensitive production business records there. Offline authentication and local-data encryption are separate future phases.
 
+### Deferred serialized-inventory snapshot
+
+Phase 3A-0 adds only the database read boundary for a later encrypted snapshot:
+`staff_serialized_inventory_snapshot()`. No application code invokes it and no
+business data is stored offline in this phase. A later replication implementation
+must use this RPC as its source, retain the offline-access vault safeguards, and
+must not treat it as an RLS replacement or an inventory-command interface.
+
 ## Synchronization lifecycle
 
 Future enabled modules will create an outbox item locally, retaining its UUID and idempotency key for every retry. The sync engine processes pending items in deterministic `createdAt`, then UUID order and permits only one loop at a time. Network failures return an item to `PENDING` with an incremented retry count; business conflicts become `CONFLICT`; unexpected permanent failures may become `FAILED`; successful items become `SYNCED` with reconciliation metadata.

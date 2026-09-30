@@ -28,6 +28,20 @@ An entirely disconnected device cannot learn that an employee was disabled until
 
 Encryption does not replace authorization. Future repositories must cache only data allowed by the enrolled role snapshot. In particular, a Staff vault must not receive Manager/Admin cost or sensitive data merely because the vault is encrypted.
 
+### Future serialized-inventory replication boundary
+
+`public.staff_serialized_inventory_snapshot()` is the future read boundary for
+encrypted, device-local serialized-inventory replication. It is not called by
+the current offline flow, and this phase does not cache business data.
+
+The RPC mirrors the existing staff serialized-lookup projection and visibility:
+it returns one row per visible unit identifier for `AVAILABLE`, `SOLD`, and
+`RETURN_PENDING` units, with catalogue retail price when present. It excludes
+inventory economics and procurement information. It requires the existing
+active-profile guard, uses a hardened `SECURITY DEFINER` search path, exposes
+execution only to `authenticated`, and never replaces RLS or authorizes a
+client-provided role.
+
 ## Local throttling and session foundation
 
 Repeated failed unlocks use an increasing, capped device-local delay; a successful unlock resets the counter. This slows casual guessing but cannot turn a weak passcode into a strong one, and an attacker controlling local browser storage may attempt to reset it.
