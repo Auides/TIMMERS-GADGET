@@ -5,6 +5,9 @@ import { DexieOfflineStore } from "./db";
 import { getInstallationDevice } from "./device";
 import { unlockOfflineAccess } from "./offline-auth";
 import { fetchOfflineReadSnapshot, readOfflineReadCache, refreshOfflineReadCache } from "./business-cache";
+import { createCustomerCreatePayload, readPendingCustomerCreates, type CustomerCreatePayload, type PendingCustomerCreate } from "./customer-create";
+import { registeredOfflineMutationExecutors } from "./mutation-executors";
+import { EncryptedMutationSyncEngine, enqueueEncryptedMutation, type MutationSyncResult, type ReplayAuthorization } from "./mutation-transport";
 import { crossedLagosBusinessDate, millisecondsUntilNextLagosBusinessDate, OFFLINE_INACTIVITY_MS, requiresOperationalRelock } from "./session";
 import { offlineReadRoles, type OfflineAuthProfile, type OfflineReadRole, type OfflineReadSnapshot } from "./types";
 
@@ -16,6 +19,9 @@ type OfflineVaultContextValue = {
   unlock: (userId: string, passcode: string) => Promise<{ ok: boolean; reason?: "INVALID" | "THROTTLED" }>;
   readBusinessCache: () => Promise<OfflineReadSnapshot | null>;
   refreshBusinessCache: () => Promise<{ capturedAt: string; catalogueCount: number; serializedInventoryCount: number; customerCount: number; supplierCount: number }>;
+  queueCustomerCreate: (fields: { fullName: string; phone?: string | null; email?: string | null }) => Promise<CustomerCreatePayload & { operationId: string }>;
+  readPendingCustomerCreates: () => Promise<PendingCustomerCreate[]>;
+  syncOfflineMutations: () => Promise<MutationSyncResult>;
 };
 const OfflineVaultContext = createContext<OfflineVaultContextValue | undefined>(undefined);
 
@@ -43,6 +49,36 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     if (!(offlineReadRoles as readonly string[]).includes(unlocked.role)) throw new Error("This role is not approved for offline business reads.");
     const snapshot = await fetchOfflineReadSnapshot();
     return refreshOfflineReadCache(new DexieOfflineStore(), { ...unlocked, role: unlocked.role as OfflineReadRole, vaultKey: vaultKey.current }, snapshot);
+  }, [unlocked]);
+  const queueCustomerCreate = useCallback(async (fields: { fullName: string; phone?: string | null; email?: string | null }) => {
+    if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before adding a customer.");
+    if (!(offlineReadRoles as readonly string[]).includes(unlocked.role)) throw new Error("This role is not approved for offline customer creation.");
+    if (typeof navigator !== "undefined" && navigator.onLine) throw new Error("Customer creation is queued only while offline.");
+    const payload = createCustomerCreatePayload(fields);
+    const operation = await enqueueEncryptedMutation(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current }, { mutationType: "CUSTOMER_CREATE", payload });
+    return { ...payload, operationId: operation.operationId };
+  }, [unlocked]);
+  const pendingCustomerCreates = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) return [];
+    return readPendingCustomerCreates(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
+  }, [unlocked]);
+  const syncOfflineMutations = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before synchronizing local changes.");
+    const identity = { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current };
+    const authorization = async (): Promise<ReplayAuthorization> => {
+      try {
+        const response = await fetch("/api/offline/mutations/replay-authorization", { cache: "no-store", credentials: "same-origin" });
+        if (!response.ok) return { hasAuthenticatedSession: false, hasActiveProfile: false };
+        const body = await response.json() as { hasAuthenticatedSession?: unknown; hasActiveProfile?: unknown };
+        return { hasAuthenticatedSession: body.hasAuthenticatedSession === true, hasActiveProfile: body.hasActiveProfile === true };
+      } catch { return { hasAuthenticatedSession: false, hasActiveProfile: false }; }
+    };
+    const result = await new EncryptedMutationSyncEngine(new DexieOfflineStore(), () => identity, authorization, registeredOfflineMutationExecutors).synchronize();
+    if (result.applied > 0 && (offlineReadRoles as readonly string[]).includes(unlocked.role)) {
+      const snapshot = await fetchOfflineReadSnapshot();
+      await refreshOfflineReadCache(new DexieOfflineStore(), { ...identity, role: unlocked.role as OfflineReadRole }, snapshot);
+    }
+    return result;
   }, [unlocked]);
 
   useEffect(() => {
@@ -76,7 +112,7 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     return () => window.clearTimeout(timer);
   }, [lock, unlocked]);
 
-  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache]);
+  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates: pendingCustomerCreates, syncOfflineMutations }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache, queueCustomerCreate, pendingCustomerCreates, syncOfflineMutations]);
   return <OfflineVaultContext.Provider value={value}>{children}</OfflineVaultContext.Provider>;
 }
 

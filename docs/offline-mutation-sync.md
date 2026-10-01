@@ -74,8 +74,25 @@ or replayed. This preserves the existing cache-purge and shared-device model.
 
 An executor is a typed, application-controlled dispatcher entry. It receives a
 decrypted payload only after local scope and unlock checks, and may report only
-`APPLIED`, retryable transient failure, `CONFLICT`, or `REJECTED`. This release
-ships no entries. A stored unknown type is rejected with a generic code rather
-than executed or retried. Adding a real executor requires separate approval,
-operation-specific tests, authenticated server RPCs, and authoritative server
-authorization/idempotency/concurrency handling.
+`APPLIED`, retryable transient failure, `CONFLICT`, or `REJECTED`. A stored
+unknown type is rejected with a generic code rather than executed or retried.
+
+## Phase 5A: CUSTOMER_CREATE
+
+`CUSTOMER_CREATE` is the first and only registered real executor. It carries a
+stable client-generated customer UUID, full name, optional phone, and optional
+email inside the encrypted envelope. Existing customer rules are preserved:
+full name is trimmed and nonblank; phone and email remain optional and no new
+duplicate rule has been created for either field. Customer update and every
+supplier, catalogue, inventory, purchase, payment, sale, return, refund,
+credit, discount, or expense mutation remains unimplemented and fails safely.
+
+Its source-only server boundary owns a small durable reservation table with
+unique operation and idempotency identities. In the same transaction it checks
+the active authenticated actor/current role, creates and audits the customer,
+and records the result. A lost response followed by retry therefore returns the
+existing result rather than a second customer. The server is authoritative for
+current authorization: role loss/deactivation results in a generic terminal
+rejection, while actual business/idempotency conflicts are terminal conflicts.
+The application refreshes the authorized encrypted customer snapshot after an
+applied replay; pending decrypted local projections are not authoritative data.

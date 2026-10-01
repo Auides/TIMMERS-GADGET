@@ -104,6 +104,22 @@ See [offline mutation sync](./offline-mutation-sync.md) for the encrypted
 envelope, strict state machine, recovery rules, and replay authorization
 contract.
 
+## Phase 5A: offline customer creation
+
+`CUSTOMER_CREATE` is the sole enabled offline mutation. While disconnected, an
+unlocked eligible Staff or Manager vault may encrypt a minimal customer payload
+(one client-generated customer UUID, full name, optional phone, optional email)
+into the V4 queue. The screen labels it **Pending synchronization** and never
+merges it silently with the server-confirmed reference snapshot. All other
+business mutations remain online-only.
+
+When the user deliberately synchronizes after reconnecting, the authenticated
+server boundary and database re-check the active profile and current role. A
+durable server reservation makes an ambiguous response retry return the same
+customer result instead of creating a duplicate. On success the encrypted
+reference snapshot is refreshed; the applied queue item remains history and no
+longer renders as pending.
+
 ## Connectivity and conflicts
 
 Browser online/offline events are only a signal. When the browser reports online but server reachability is unknown, state is `CHECKING`; a future health signal can report `ONLINE` or `DEGRADED`. The authenticated shell shows this non-sensitive state and a pending outbox count.

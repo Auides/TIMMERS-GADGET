@@ -40,7 +40,8 @@ export type MutationSyncResult = {
 };
 
 const transitions: Readonly<Record<EncryptedMutationState, readonly EncryptedMutationState[]>> = {
-  PENDING: ["SYNCING"],
+  // A server-confirmed deactivation can reject an unstarted operation without decrypting it.
+  PENDING: ["SYNCING", "REJECTED"],
   SYNCING: ["PENDING", "APPLIED", "CONFLICT", "REJECTED"],
   APPLIED: [],
   CONFLICT: [],
@@ -169,7 +170,16 @@ export class EncryptedMutationSyncEngine {
       if (recovered !== record) { await this.store.updateEncryptedMutation(recovered); result.recovered += 1; }
     }
     const authorization = await this.getReplayAuthorization();
-    if (!authorization.hasAuthenticatedSession || !authorization.hasActiveProfile) { result.authorizationUnavailable = true; return result; }
+    if (!authorization.hasAuthenticatedSession) { result.authorizationUnavailable = true; return result; }
+    if (!authorization.hasActiveProfile) {
+      for (const record of await this.store.listEncryptedMutations(identity.userId, identity.deviceId)) {
+        if (record.state === "PENDING") {
+          await this.store.updateEncryptedMutation(transition(record, "REJECTED", now, { statusCode: "AUTHORIZATION_REJECTED" }));
+          result.rejected += 1;
+        }
+      }
+      return result;
+    }
     const pending = (await this.store.listEncryptedMutations(identity.userId, identity.deviceId)).filter((record) => isDue(record, now)).sort(compareEncryptedMutationEnvelopes);
     for (const record of pending) await this.process(identity, record, result);
     return result;

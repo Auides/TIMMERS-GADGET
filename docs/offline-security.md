@@ -94,6 +94,23 @@ deactivation removes the encrypted queue and conflict records from this device;
 role changes leave the encrypted queue in place but its future replay is
 re-authorized by the server. No service worker stores or replays operations.
 
+### Phase 5A customer-create boundary
+
+The only live executor is `CUSTOMER_CREATE`. Its encrypted payload holds the
+minimum existing customer fields: a stable client-generated UUID, trimmed full
+name, optional phone, and optional email. No cached role, credit/balance,
+history, address, payment, or unrelated profile information is included. The
+same name, phone, or email never appears in V4 plaintext metadata or a local
+shadow record.
+
+The source-only database boundary uses a deferred customer foreign key and a
+unique operation/idempotency reservation inside one transaction. A response
+lost after commit is safe: repeating the same operation under the same active
+actor returns the previously created customer rather than inserting another.
+The RPC independently checks the active profile and current role on every
+attempt, maps conflicts/rejections to generic local codes, and never returns
+raw database errors for persistent diagnostics.
+
 ## Risks and next steps
 
 IndexedDB is not a hardware-backed secure store. A compromised, unlocked browser or XSS can access data available to the page, so strong CSP, dependency hygiene, device controls, and fast lock behavior remain essential. Shared-device employees should lock before handing off a device and disable enrollment on retirement/replacement.

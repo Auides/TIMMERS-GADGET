@@ -32,6 +32,17 @@ foundation only; it registers no real business executor and does not replay any
 business command. Its eventual replay contract is documented in
 [offline mutation sync](./offline-mutation-sync.md).
 
+## Phase 5A pending customer reconciliation
+
+Offline customer creation does not alter the encrypted authoritative reference
+snapshot. Pending customer projections are derived only in memory by decrypting
+the current user's `CUSTOMER_CREATE` envelope after vault unlock, and are
+visibly marked pending synchronization. After the narrow authenticated replay
+command reports `APPLIED`, the application refreshes the permitted encrypted
+customer snapshot; the applied operation is retained for non-replay history but
+is excluded from the pending projection. Rejections and conflicts remain
+terminal and never enter the cache as confirmed customers.
+
 ## Phase 4A reference datasets
 
 The atomic snapshot additionally carries minimized customer reference records
