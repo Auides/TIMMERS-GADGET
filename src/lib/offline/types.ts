@@ -170,7 +170,7 @@ export type OfflineSerializedInventoryRecord = {
 };
 
 /** Operational reference data only; financial, credit, purchase, and history fields are excluded. */
-export type OfflineCustomerRecord = { customerId: string; fullName: string; phone: string | null; email: string | null };
+export type OfflineCustomerRecord = { customerId: string; fullName: string; phone: string | null; email: string | null; customerVersion: string };
 export type OfflineSupplierRecord = { supplierId: string; businessName: string; contactName: string | null; phone: string | null; email: string | null; active: boolean };
 
 export type OfflineReadSnapshot = {

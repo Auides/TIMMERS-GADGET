@@ -83,8 +83,8 @@ unknown type is rejected with a generic code rather than executed or retried.
 stable client-generated customer UUID, full name, optional phone, and optional
 email inside the encrypted envelope. Existing customer rules are preserved:
 full name is trimmed and nonblank; phone and email remain optional and no new
-duplicate rule has been created for either field. Customer update and every
-supplier, catalogue, inventory, purchase, payment, sale, return, refund,
+duplicate rule has been created for either field. Every supplier, catalogue,
+inventory, purchase, payment, sale, return, refund,
 credit, discount, or expense mutation remains unimplemented and fails safely.
 
 Its source-only server boundary owns a small durable reservation table with
@@ -96,3 +96,27 @@ current authorization: role loss/deactivation results in a generic terminal
 rejection, while actual business/idempotency conflicts are terminal conflicts.
 The application refreshes the authorized encrypted customer snapshot after an
 applied replay; pending decrypted local projections are not authoritative data.
+
+## Phase 5B: CUSTOMER_UPDATE
+
+The only registered business executors are now `CUSTOMER_CREATE` and
+`CUSTOMER_UPDATE`; every supplier, catalogue, inventory, purchase, payment,
+sale, return, refund, credit, discount, or expense mutation remains offline
+unimplemented. `CUSTOMER_UPDATE` carries one server-confirmed customer ID, the
+existing editable customer fields, and the exact server-issued snapshot version
+inside V4 ciphertext.
+
+The source-only replay function owns a durable operation/idempotency reservation
+and processes a retry in this order: re-authorize the current actor, locate and
+validate a prior committed reservation, then lock and compare the customer
+version for a new operation. This ordering makes an after-commit response loss
+idempotently `APPLIED`; it cannot create another update or become stale against
+the same update. If another actor has changed the customer, the expected version
+does not match and the operation is terminal `CONFLICT`, is never automatically
+retried, and preserves its encrypted proposed edit for explicit future review.
+
+Validation failures, role loss, and deactivation are terminal `REJECTED` with
+generic codes. Transient transport failures retain the original operation and
+idempotency IDs. A pending local create or any open/conflicted update for the
+same customer blocks a new update; dependency graphs and conflict merges are
+explicitly out of scope for this phase.

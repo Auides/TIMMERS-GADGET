@@ -6,6 +6,7 @@ import { getInstallationDevice } from "./device";
 import { unlockOfflineAccess } from "./offline-auth";
 import { fetchOfflineReadSnapshot, readOfflineReadCache, refreshOfflineReadCache } from "./business-cache";
 import { createCustomerCreatePayload, readPendingCustomerCreates, type CustomerCreatePayload, type PendingCustomerCreate } from "./customer-create";
+import { assertCustomerUpdateEligible, createCustomerUpdatePayload, readCustomerUpdateReviews, readPendingCustomerUpdates, type CustomerUpdatePayload, type CustomerUpdateReview, type PendingCustomerUpdate } from "./customer-update";
 import { registeredOfflineMutationExecutors } from "./mutation-executors";
 import { EncryptedMutationSyncEngine, enqueueEncryptedMutation, type MutationSyncResult, type ReplayAuthorization } from "./mutation-transport";
 import { crossedLagosBusinessDate, millisecondsUntilNextLagosBusinessDate, OFFLINE_INACTIVITY_MS, requiresOperationalRelock } from "./session";
@@ -21,6 +22,9 @@ type OfflineVaultContextValue = {
   refreshBusinessCache: () => Promise<{ capturedAt: string; catalogueCount: number; serializedInventoryCount: number; customerCount: number; supplierCount: number }>;
   queueCustomerCreate: (fields: { fullName: string; phone?: string | null; email?: string | null }) => Promise<CustomerCreatePayload & { operationId: string }>;
   readPendingCustomerCreates: () => Promise<PendingCustomerCreate[]>;
+  queueCustomerUpdate: (fields: CustomerUpdatePayload) => Promise<CustomerUpdatePayload & { operationId: string }>;
+  readPendingCustomerUpdates: () => Promise<PendingCustomerUpdate[]>;
+  readCustomerUpdateReviews: () => Promise<CustomerUpdateReview[]>;
   syncOfflineMutations: () => Promise<MutationSyncResult>;
 };
 const OfflineVaultContext = createContext<OfflineVaultContextValue | undefined>(undefined);
@@ -62,6 +66,28 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     if (!unlocked || !vaultKey.current) return [];
     return readPendingCustomerCreates(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
   }, [unlocked]);
+  const queueCustomerUpdate = useCallback(async (fields: CustomerUpdatePayload) => {
+    if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before editing a customer.");
+    if (!(offlineReadRoles as readonly string[]).includes(unlocked.role)) throw new Error("This role is not approved for offline customer editing.");
+    if (typeof navigator !== "undefined" && navigator.onLine) throw new Error("Customer edits are queued only while offline.");
+    const identity = { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current };
+    const payload = createCustomerUpdatePayload(fields);
+    const [pendingCreates, reviews] = await Promise.all([
+      readPendingCustomerCreates(new DexieOfflineStore(), identity),
+      readCustomerUpdateReviews(new DexieOfflineStore(), identity),
+    ]);
+    assertCustomerUpdateEligible(payload.customerId, pendingCreates.map((record) => record.customerId), reviews.map((record) => record.customerId));
+    const operation = await enqueueEncryptedMutation(new DexieOfflineStore(), identity, { mutationType: "CUSTOMER_UPDATE", payload });
+    return { ...payload, operationId: operation.operationId };
+  }, [unlocked]);
+  const pendingCustomerUpdates = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) return [];
+    return readPendingCustomerUpdates(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
+  }, [unlocked]);
+  const customerUpdateReviews = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) return [];
+    return readCustomerUpdateReviews(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
+  }, [unlocked]);
   const syncOfflineMutations = useCallback(async () => {
     if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before synchronizing local changes.");
     const identity = { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current };
@@ -74,7 +100,7 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
       } catch { return { hasAuthenticatedSession: false, hasActiveProfile: false }; }
     };
     const result = await new EncryptedMutationSyncEngine(new DexieOfflineStore(), () => identity, authorization, registeredOfflineMutationExecutors).synchronize();
-    if (result.applied > 0 && (offlineReadRoles as readonly string[]).includes(unlocked.role)) {
+    if ((result.applied > 0 || result.conflicted > 0) && (offlineReadRoles as readonly string[]).includes(unlocked.role)) {
       const snapshot = await fetchOfflineReadSnapshot();
       await refreshOfflineReadCache(new DexieOfflineStore(), { ...identity, role: unlocked.role as OfflineReadRole }, snapshot);
     }
@@ -112,7 +138,7 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     return () => window.clearTimeout(timer);
   }, [lock, unlocked]);
 
-  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates: pendingCustomerCreates, syncOfflineMutations }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache, queueCustomerCreate, pendingCustomerCreates, syncOfflineMutations]);
+  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates: pendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates: pendingCustomerUpdates, readCustomerUpdateReviews: customerUpdateReviews, syncOfflineMutations }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache, queueCustomerCreate, pendingCustomerCreates, queueCustomerUpdate, pendingCustomerUpdates, customerUpdateReviews, syncOfflineMutations]);
   return <OfflineVaultContext.Provider value={value}>{children}</OfflineVaultContext.Provider>;
 }
 

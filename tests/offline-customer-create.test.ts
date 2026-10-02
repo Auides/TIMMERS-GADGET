@@ -88,8 +88,8 @@ test("current inactive server authorization rejects pending customer creation wi
   assert.equal((await store.getEncryptedMutation(record.operationId))?.statusCode, "AUTHORIZATION_REJECTED");
 });
 
-test("the phase registers exactly CUSTOMER_CREATE, keeps legacy outbox unused, and excludes service-worker replay", () => {
-  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE"]);
+test("the phase registers only CUSTOMER_CREATE and CUSTOMER_UPDATE, keeps legacy outbox unused, and excludes service-worker replay", () => {
+  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE"]);
   const database = readFileSync(new URL("../src/lib/offline/db.ts", import.meta.url), "utf8");
   assert.match(database, /encryptedMutationOutbox/);
   assert.doesNotMatch(database.slice(0, database.indexOf("encryptedMutationOutbox")), /CUSTOMER_CREATE/);

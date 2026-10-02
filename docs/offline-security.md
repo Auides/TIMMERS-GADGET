@@ -111,6 +111,25 @@ The RPC independently checks the active profile and current role on every
 attempt, maps conflicts/rejections to generic local codes, and never returns
 raw database errors for persistent diagnostics.
 
+### Phase 5B customer-update concurrency boundary
+
+`CUSTOMER_UPDATE` uses the same V4 ciphertext-only envelope and the same
+memory-only unlocked vault as customer creation. Its additional plaintext field
+inside the encrypted request is the customer reference snapshot's server-issued
+`customerVersion` (`customers.updated_at`), never a client time or cached role.
+Names, phones, emails, and the expected version are not placed in IndexedDB
+metadata, the legacy outbox, service-worker caches, or diagnostic text.
+
+Replay re-checks the authenticated session, active profile, and current server
+role before the database function processes the operation. The function locks a
+matching idempotency reservation before comparing the current customer version.
+Thus a response lost after a committed update returns the committed result on
+retry, rather than treating the operation as stale against itself. A genuinely
+stale expected version returns only a generic conflict code; authorization and
+validation failures return generic rejections. The encrypted proposed update
+remains available only after the owner unlocks the vault, and no automatic
+conflict retry or last-write-wins fallback exists.
+
 ## Risks and next steps
 
 IndexedDB is not a hardware-backed secure store. A compromised, unlocked browser or XSS can access data available to the page, so strong CSP, dependency hygiene, device controls, and fast lock behavior remain essential. Shared-device employees should lock before handing off a device and disable enrollment on retirement/replacement.

@@ -43,6 +43,25 @@ customer snapshot; the applied operation is retained for non-replay history but
 is excluded from the pending projection. Rejections and conflicts remain
 terminal and never enter the cache as confirmed customers.
 
+## Phase 5B customer-update reconciliation
+
+Customer reference rows now include only one additional non-financial field:
+the authoritative server `customerVersion`, derived from `customers.updated_at`.
+It is encrypted with the rest of the user/device-scoped customer resource and
+is retained exactly with the cached customer record. It authorizes neither a
+role nor a client clock; it is only an optimistic-concurrency expectation sent
+inside the encrypted `CUSTOMER_UPDATE` payload.
+
+While unlocked, the UI derives pending customer edits by decrypting that
+customer's `CUSTOMER_UPDATE` envelope in memory. It retains the authoritative
+cached record separately, marks the proposal pending, and writes no plaintext
+edited-customer shadow. A successful replay refreshes the complete encrypted
+reference snapshot and replaces the old version. A stale conflict is terminal,
+preserves the encrypted proposal for later review, and may still refresh the
+authoritative snapshot; it never silently overwrites it. Pending-created
+customers cannot enter an update workflow until their create operation has
+applied.
+
 ## Phase 4A reference datasets
 
 The atomic snapshot additionally carries minimized customer reference records

@@ -120,6 +120,33 @@ customer result instead of creating a duplicate. On success the encrypted
 reference snapshot is refreshed; the applied queue item remains history and no
 longer renders as pending.
 
+## Phase 5B: conflict-safe customer updates
+
+`CUSTOMER_UPDATE` is the second and only other approved offline mutation. It is
+limited to a server-confirmed cached customer and its existing editable fields:
+full name, optional phone, and optional email. The encrypted customer reference
+snapshot carries the server-maintained `customers.updated_at` value as a
+non-sensitive `customerVersion`. The database already updates this value with
+its `customers_updated` trigger whenever customer fields change; device clocks
+are never used for concurrency.
+
+An offline edit includes the exact cached version inside its encrypted V4
+payload. On replay, the authenticated database function checks an existing
+operation reservation first, then locks the customer row and compares the
+expected version before updating it. A matching version applies once and the
+new trigger-issued version replaces the cached one after refresh. A stale
+version becomes a terminal conflict: it cannot overwrite a newer server edit,
+is not retried automatically, and its encrypted proposed change remains local
+for future explicit review. The client may refresh the authoritative snapshot
+after that conflict but does not implement merge or last-write-wins behavior.
+
+An unsynchronized pending `CUSTOMER_CREATE` cannot receive a dependent update;
+the UI and queue reject it until the server has confirmed the creation. A
+customer that already has an open or conflicted offline update likewise cannot
+receive another update in this phase. The decrypted UI identifies authoritative
+cached values separately from a proposed pending edit and gives conflicts only
+the safe status **Needs review after reconnect**.
+
 ## Connectivity and conflicts
 
 Browser online/offline events are only a signal. When the browser reports online but server reachability is unknown, state is `CHECKING`; a future health signal can report `ONLINE` or `DEGRADED`. The authenticated shell shows this non-sensitive state and a pending outbox count.

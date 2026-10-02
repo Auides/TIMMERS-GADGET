@@ -44,7 +44,7 @@ function serializedRecord(row: Record<string, unknown>): OfflineSerializedInvent
 }
 
 function customerRecord(row: Record<string, unknown>): OfflineCustomerRecord {
-  return { customerId: requiredString(row.customer_id), fullName: requiredString(row.full_name), phone: nullableString(row.phone), email: nullableString(row.email) };
+  return { customerId: requiredString(row.customer_id), fullName: requiredString(row.full_name), phone: nullableString(row.phone), email: nullableString(row.email), customerVersion: requiredString(row.customer_version) };
 }
 
 function supplierRecord(row: Record<string, unknown>): OfflineSupplierRecord {
@@ -64,7 +64,7 @@ export async function GET() {
     const [catalogueResult, serializedResult, customerResult, supplierResult] = await Promise.all([
       supabase.rpc("staff_catalog_lookup", { p_search: null }),
       supabase.rpc("staff_serialized_inventory_snapshot"),
-      supabase.rpc("staff_customer_reference_snapshot"),
+      supabase.rpc("staff_customer_reference_snapshot_v2"),
       profile.role === "MANAGER"
         ? supabase.rpc("manager_supplier_reference_snapshot")
         : Promise.resolve({ data: [], error: null }),
