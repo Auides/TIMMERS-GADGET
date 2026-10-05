@@ -18,7 +18,7 @@ function LockedOfflineData({ returnTo }: { returnTo: string }) {
 const labels: Record<OfflineNormalReadMode, string> = { catalogue: "Catalogue", inventory: "Inventory", customers: "Customers", suppliers: "Suppliers" };
 
 export function OfflineNormalRead({ mode, returnTo }: { mode: OfflineNormalReadMode; returnTo: string }) {
-  const { unlocked, lock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates, readCustomerUpdateReviews, syncOfflineMutations } = useOfflineVault();
+  const { unlocked, lock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates, readCustomerUpdateReviews, queueSupplierCreate, readPendingSupplierCreates, syncOfflineMutations } = useOfflineVault();
   const [snapshot, setSnapshot] = useState<OfflineReadSnapshot | null>(null);
   const [message, setMessage] = useState("Loading encrypted local data…");
   const [search, setSearch] = useState("");
@@ -32,6 +32,13 @@ export function OfflineNormalRead({ mode, returnTo }: { mode: OfflineNormalReadM
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerBusy, setCustomerBusy] = useState(false);
   const [customerMessage, setCustomerMessage] = useState("");
+  const [pendingSuppliers, setPendingSuppliers] = useState<Awaited<ReturnType<typeof readPendingSupplierCreates>>>([]);
+  const [supplierName, setSupplierName] = useState("");
+  const [supplierContact, setSupplierContact] = useState("");
+  const [supplierPhone, setSupplierPhone] = useState("");
+  const [supplierEmail, setSupplierEmail] = useState("");
+  const [supplierBusy, setSupplierBusy] = useState(false);
+  const [supplierMessage, setSupplierMessage] = useState("");
   const [customerEdit, setCustomerEdit] = useState<OfflineCustomerRecord | null>(null);
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -53,6 +60,16 @@ export function OfflineNormalRead({ mode, returnTo }: { mode: OfflineNormalReadM
     }).catch(() => { if (!disposed) setCustomerMessage("Pending customer data could not be read until offline access is unlocked again."); });
     return () => { disposed = true; };
   }, [mode, unlocked, readPendingCustomerCreates, readPendingCustomerUpdates, readCustomerUpdateReviews]);
+  const loadSupplierMutationProjection = async () => {
+    try { setPendingSuppliers(await readPendingSupplierCreates()); }
+    catch { setSupplierMessage("Pending supplier data could not be read until offline access is unlocked again."); }
+  };
+  useEffect(() => {
+    if (mode !== "suppliers" || !unlocked || unlocked.role !== "MANAGER") return;
+    let disposed = false;
+    void readPendingSupplierCreates().then((creates) => { if (!disposed) setPendingSuppliers(creates); }).catch(() => { if (!disposed) setSupplierMessage("Pending supplier data could not be read until offline access is unlocked again."); });
+    return () => { disposed = true; };
+  }, [mode, unlocked, readPendingSupplierCreates]);
   const refresh = async () => { if (!online) { setMessage("Reconnect before refreshing. Existing encrypted data remains available."); return; } setRefreshing(true); try { await refreshBusinessCache(); const cached = await readBusinessCache(); setSnapshot(cached); setMessage(cached ? "Encrypted snapshot refreshed." : "The refreshed snapshot could not be read."); } catch { setMessage("The encrypted snapshot could not be refreshed."); } finally { setRefreshing(false); } };
   const query = search.trim().toLocaleLowerCase();
   const catalogue = useMemo(() => snapshot?.catalogue.filter((record) => !query || [record.productName, record.productSku, record.productBarcode, record.variantLabel, record.variantSku, record.variantBarcode].filter(Boolean).some((value) => value!.toLocaleLowerCase().includes(query))) ?? [], [query, snapshot]);
@@ -85,6 +102,27 @@ export function OfflineNormalRead({ mode, returnTo }: { mode: OfflineNormalReadM
     try { const result = await syncOfflineMutations(); await loadCustomerMutationProjection(); setSnapshot(await readBusinessCache()); setCustomerMessage(result.applied ? "Pending customer change synchronized and local references refreshed." : result.rejected ? "A pending customer change was rejected by current server authorization or validation." : result.conflicted ? "A customer edit needs review after reconnect. The authoritative reference data was refreshed." : "No pending customer change was ready to synchronize."); }
     catch { setCustomerMessage("Pending customers could not be synchronized. They remain encrypted and will not be duplicated."); }
     finally { setCustomerBusy(false); }
+  };
+  const queueSupplier = async () => {
+    setSupplierBusy(true); setSupplierMessage("");
+    try {
+      await queueSupplierCreate({ businessName: supplierName, contactName: supplierContact, phone: supplierPhone, email: supplierEmail });
+      setSupplierName(""); setSupplierContact(""); setSupplierPhone(""); setSupplierEmail("");
+      await loadSupplierMutationProjection();
+      setSupplierMessage("Supplier saved securely on this device and pending synchronization.");
+    } catch (error) { setSupplierMessage(error instanceof Error ? error.message : "The supplier could not be queued securely."); }
+    finally { setSupplierBusy(false); }
+  };
+  const syncSuppliers = async () => {
+    if (!online) { setSupplierMessage("Reconnect before synchronizing pending suppliers."); return; }
+    setSupplierBusy(true); setSupplierMessage("");
+    try {
+      const result = await syncOfflineMutations();
+      await loadSupplierMutationProjection();
+      setSnapshot(await readBusinessCache());
+      setSupplierMessage(result.applied ? "Pending supplier change synchronized and local references refreshed." : result.rejected ? "A pending supplier change was rejected by current server authorization or validation." : result.conflicted ? "A supplier change needs review after reconnect. The authoritative references were refreshed." : "No pending supplier change was ready to synchronize.");
+    } catch { setSupplierMessage("Pending suppliers could not be synchronized. They remain encrypted and will not be duplicated."); }
+    finally { setSupplierBusy(false); }
   };
   if (!unlocked) return <LockedOfflineData returnTo={returnTo} />;
   if (unlocked.role === "ADMIN") return <main className="offline-page"><section className="offline-panel"><p className="app-eyebrow">OFFLINE DATA</p><h1>Offline read cache is unavailable</h1><p>Admin work remains online-only. Approved Admin offline functionality is future work.</p><button className="app-button-secondary" type="button" onClick={lock}>Lock offline access</button></section></main>;
@@ -126,7 +164,7 @@ export function OfflineNormalRead({ mode, returnTo }: { mode: OfflineNormalReadM
       {(pendingCustomers.length || pendingCustomerUpdates.length) ? <button className="app-button-secondary" disabled={!online || customerBusy} type="button" onClick={() => void syncCustomers()}>{customerBusy ? "Synchronizing…" : online ? "Synchronize pending customer changes" : "Reconnect to synchronize"}</button> : null}
       {customerMessage ? <p className="offline-access-message" role="status">{customerMessage}</p> : null}
     </section> : null}
-    {mode === "suppliers" ? <section className="offline-workspace-section"><h2>Supplier references</h2><div className="offline-workspace-list">{suppliers.map((record) => <article key={record.supplierId}><div><strong>{record.businessName}</strong><span>{[record.contactName, record.phone, record.email].filter(Boolean).join(" · ") || "No contact details recorded."}</span></div><div><strong>{record.active ? "Active" : "Archived"}</strong></div></article>)}</div><p className="offline-mutation-notice">Supplier changes, purchases, payments, refunds, and all procurement writes require an internet connection.</p></section> : null}
+    {mode === "suppliers" ? <section className="offline-workspace-section"><h2>Supplier references</h2><div className="offline-workspace-list">{suppliers.map((record) => <article key={record.supplierId}><div><strong>{record.businessName}</strong><span>Authoritative cached record · {[record.contactName, record.phone, record.email].filter(Boolean).join(" · ") || "No contact details recorded."}</span></div><div><strong>{record.active ? "Active" : "Archived"}</strong></div></article>)}{pendingSuppliers.map((record) => <article key={record.operationId}><div><strong>{record.businessName}</strong><span>{[record.contactName, record.phone, record.email].filter(Boolean).join(" · ") || "No contact details recorded."}</span></div><div><strong>Pending synchronization</strong><span>Not yet confirmed by the server.</span></div></article>)}</div>{!online ? <form className="offline-customer-create" onSubmit={(event) => { event.preventDefault(); void queueSupplier(); }}><h3>Add supplier offline</h3><p>This supplier is encrypted on this device and pending synchronization. It is not yet a server-confirmed supplier.</p><label>Business name<input required value={supplierName} onChange={(event) => setSupplierName(event.target.value)} /></label><label>Contact name (optional)<input value={supplierContact} onChange={(event) => setSupplierContact(event.target.value)} /></label><label>Phone (optional)<input value={supplierPhone} onChange={(event) => setSupplierPhone(event.target.value)} /></label><label>Email (optional)<input value={supplierEmail} onChange={(event) => setSupplierEmail(event.target.value)} /></label><button className="app-button-primary" disabled={supplierBusy} type="submit">{supplierBusy ? "Saving securely…" : "Save for synchronization"}</button></form> : <p className="offline-mutation-notice">Supplier creation is available only from this encrypted offline workspace while disconnected.</p>}{pendingSuppliers.length ? <button className="app-button-secondary" disabled={!online || supplierBusy} type="button" onClick={() => void syncSuppliers()}>{supplierBusy ? "Synchronizing…" : online ? "Synchronize pending supplier changes" : "Reconnect to synchronize"}</button> : null}{supplierMessage ? <p className="offline-access-message" role="status">{supplierMessage}</p> : null}<p className="offline-mutation-notice">Supplier updates, purchases, payments, refunds, and all procurement writes require an internet connection.</p></section> : null}
     <button className="app-button-secondary" type="button" onClick={lock}>Lock offline access</button>
   </section></main>;
 }

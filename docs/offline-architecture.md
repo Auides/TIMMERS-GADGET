@@ -158,3 +158,23 @@ Two disconnected devices cannot know about each other's unsynchronized transacti
 The Next.js manifest enables standalone installation and uses the existing favicon only; no final logo is fabricated. The service worker has an explicitly versioned cache, removes obsolete application caches, caches only same-origin static assets, and uses network-first navigation with the public `/offline` fallback.
 
 It does not cache Supabase authenticated responses, mutations, arbitrary non-GET requests, sensitive dynamic financial responses, or authenticated HTML. Full business-table caching is intentionally absent until each module has an approved conflict and reconciliation design.
+
+## Phase 6A: Manager-only offline supplier creation
+
+`SUPPLIER_CREATE` is the third and final enabled offline mutation in this phase.
+Only a Manager with an unlocked vault may queue the narrow existing supplier
+fields: one stable client-generated supplier UUID, business name, and optional
+contact name, phone, and email. STAFF cannot view supplier data or supplier
+creation controls; ADMIN remains outside the approved offline-cache model.
+
+The queue labels each locally decrypted entry **Pending synchronization** and
+keeps it separate from the authoritative encrypted supplier snapshot. On
+reconnect, the current authenticated server profile and role are rechecked: a
+role downgrade or deactivation is rejected, not replayed. A durable server
+operation/idempotency reservation makes a response lost after commit resolve to
+the original supplier rather than creating a duplicate. An applied replay
+refreshes the encrypted supplier snapshot, so the confirmed supplier replaces
+the pending projection while the terminal operation remains non-replay history.
+
+Supplier update, archival, purchases, receiving, payments, refunds, inventory,
+catalogue, sales, and every other mutation remain online-only.

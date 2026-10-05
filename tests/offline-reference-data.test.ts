@@ -35,7 +35,7 @@ test("reference records join the same encrypted atomic, user-and-device-scoped s
   assert.doesNotMatch(cache, /localStorage|sessionStorage|outbox/i);
 });
 
-test("offline reference UI searches only unlocked in-memory data and limits customer mutations to encrypted create/update safeguards", () => {
+test("offline reference UI searches only unlocked in-memory data and limits mutations to approved encrypted safeguards", () => {
   assert.match(fallback, /record\.fullName, record\.phone, record\.email/);
   assert.match(fallback, /record\.businessName, record\.contactName, record\.phone, record\.email/);
   assert.match(fallback, /Add customer offline/);
@@ -44,7 +44,8 @@ test("offline reference UI searches only unlocked in-memory data and limits cust
   assert.match(fallback, /Authoritative cached record/);
   assert.match(fallback, /Needs review after reconnect/);
   assert.match(fallback, /editing is unavailable until it is confirmed/);
-  assert.match(fallback, /Supplier changes, purchases, payments, refunds, and all procurement writes require an internet connection\./);
+  assert.match(fallback, /Add supplier offline/);
+  assert.match(fallback, /Supplier updates, purchases, payments, refunds, and all procurement writes require an internet connection\./);
   assert.match(fallback, /Offline data is locked\./);
   assert.doesNotMatch(fallback, /enqueue|outbox/i);
 });

@@ -74,5 +74,21 @@ persisted.
 
 Offline searches are in-memory after an unlock. The customer/supplier views use
 the same locked, no-cache, stale, and explicit-refresh states as existing
-offline reads. They are reference-only: customer/supplier mutations, purchases,
-payments, refunds, sales, and returns stay online-only and never use the outbox.
+offline reads. At the Phase 4A reference-data boundary they were read-only;
+purchases, payments, refunds, sales, returns, and all other unapproved commands
+stay online-only and never use the outbox.
+
+## Phase 6A pending supplier reconciliation
+
+Managers may additionally create a supplier while disconnected. The new record
+is not written into the cached supplier snapshot or any plaintext projection:
+the pending row is derived only after the owner unlocks and decrypts the
+current user's `SUPPLIER_CREATE` V4 envelope in memory. It is visibly marked
+pending and cannot be mistaken for a server-confirmed supplier.
+
+After an applied replay, the existing authenticated snapshot refresh replaces
+that in-memory pending projection with the authoritative supplier record. The
+applied operation remains terminal history and is excluded from pending rows.
+Rejected/conflicted operations do not enter the snapshot. Supplier UPDATE,
+purchases, payments, refunds, and every other procurement/inventory operation
+remain online-only.

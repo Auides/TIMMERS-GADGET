@@ -120,3 +120,25 @@ generic codes. Transient transport failures retain the original operation and
 idempotency IDs. A pending local create or any open/conflicted update for the
 same customer blocks a new update; dependency graphs and conflict merges are
 explicitly out of scope for this phase.
+
+## Phase 6A: SUPPLIER_CREATE
+
+`SUPPLIER_CREATE` is the third and only additional registered executor. It is
+available only to a Manager and carries a stable client-generated supplier UUID,
+business name, optional contact name, optional phone, and optional email inside
+V4 ciphertext. STAFF has no supplier queue or mutation UI; Admin offline work
+is not expanded here. The legacy plaintext outbox and service worker never
+store, decrypt, or replay supplier requests.
+
+The source-only server boundary creates a Manager-only durable reservation with
+unique operation and idempotency identities plus a canonical request
+fingerprint. It first rechecks the active authenticated actor/current role,
+then creates and audits the supplier in the same transaction for a new
+reservation. A retry after a lost response validates the original actor and
+fingerprint and returns the original supplier ID, preventing a duplicate. No
+new uniqueness rule is imposed on business name, phone, or email; the existing
+online supplier-create semantics are preserved. Validation, current-role loss,
+and deactivation are generic terminal `REJECTED` outcomes; actual idempotency
+or authoritative business conflicts are terminal `CONFLICT` outcomes. Supplier
+UPDATE and all procurement, inventory, catalogue, sales, payment, return,
+refund, credit, discount, and expense mutations remain unregistered.

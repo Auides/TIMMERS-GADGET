@@ -130,6 +130,26 @@ validation failures return generic rejections. The encrypted proposed update
 remains available only after the owner unlocks the vault, and no automatic
 conflict retry or last-write-wins fallback exists.
 
+### Phase 6A supplier-create boundary
+
+`SUPPLIER_CREATE` uses the same V4 ciphertext-only envelope, memory-only vault
+key, and user/device AAD binding. Its payload contains only a stable supplier
+UUID, business name, and optional contact name, phone, and email; it contains
+no supplier balance, procurement data, costs, payments, notes, cached role, or
+authorization decision. Supplier names and contact values never occur in
+plaintext IndexedDB metadata, the legacy outbox, service-worker caches, or
+stored diagnostic text.
+
+Queueing and replay are deliberately Manager-only. STAFF has no supplier
+creation UI or queue capability, and Admin offline support remains unapproved.
+The authenticated endpoint and the hardened `SECURITY DEFINER` function both
+derive and check the current active profile role on every replay. The durable
+operation/idempotency reservation validates the original actor, supplier UUID,
+and canonical request fingerprint before returning an existing success. This
+makes an ambiguous lost response safe without trusting a cached role or exposing
+raw database errors. Supplier UPDATE and every procurement command remain
+online-only.
+
 ## Risks and next steps
 
 IndexedDB is not a hardware-backed secure store. A compromised, unlocked browser or XSS can access data available to the page, so strong CSP, dependency hygiene, device controls, and fast lock behavior remain essential. Shared-device employees should lock before handing off a device and disable enrollment on retirement/replacement.
