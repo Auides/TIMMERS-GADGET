@@ -108,8 +108,8 @@ test("the source-only server boundary is Manager-only, durable, audited, and pre
   assert.match(route, /profile\.role !== "MANAGER"/);
 });
 
-test("only the three approved commands are registered; legacy outbox and service worker never receive supplier payloads", () => {
-  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE"]);
+test("only the four approved commands are registered; legacy outbox and service worker never receive supplier payloads", () => {
+  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE"]);
   const database = readFileSync(new URL("../src/lib/offline/db.ts", import.meta.url), "utf8");
   const worker = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
   assert.doesNotMatch(database.slice(0, database.indexOf("encryptedMutationOutbox")), /SUPPLIER_CREATE|Acme Supplier/i);

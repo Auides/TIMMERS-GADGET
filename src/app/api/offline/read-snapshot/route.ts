@@ -49,7 +49,7 @@ function customerRecord(row: Record<string, unknown>): OfflineCustomerRecord {
 
 function supplierRecord(row: Record<string, unknown>): OfflineSupplierRecord {
   if (typeof row.active !== "boolean") throw new Error("Invalid read projection.");
-  return { supplierId: requiredString(row.supplier_id), businessName: requiredString(row.business_name), contactName: nullableString(row.contact_name), phone: nullableString(row.phone), email: nullableString(row.email), active: row.active };
+  return { supplierId: requiredString(row.supplier_id), businessName: requiredString(row.business_name), contactName: nullableString(row.contact_name), phone: nullableString(row.phone), email: nullableString(row.email), active: row.active, supplierVersion: requiredString(row.supplier_version) };
 }
 
 /** Authenticated, read-only boundary for the encrypted browser cache. No caller-supplied role is accepted. */
@@ -66,7 +66,7 @@ export async function GET() {
       supabase.rpc("staff_serialized_inventory_snapshot"),
       supabase.rpc("staff_customer_reference_snapshot_v2"),
       profile.role === "MANAGER"
-        ? supabase.rpc("manager_supplier_reference_snapshot")
+        ? supabase.rpc("manager_supplier_reference_snapshot_v2")
         : Promise.resolve({ data: [], error: null }),
     ]);
     if (catalogueResult.error || serializedResult.error || customerResult.error || supplierResult.error) throw new Error("Read projection failed.");

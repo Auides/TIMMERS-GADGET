@@ -42,7 +42,7 @@ async function queued(store = new MemoryStore(), currentIdentity?: Awaited<Retur
 test("CUSTOMER_UPDATE payload, including the authoritative version, is encrypted and only approved commands are registered", async () => {
   const { store, currentIdentity, record } = await queued();
   assert.doesNotMatch(JSON.stringify(record), /Ada Updated|08000000000|ada@example\.test|2026-10-01T09:00:00\.000Z/);
-  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE"]);
+  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE"]);
   assert.deepEqual(await readPendingCustomerUpdates(store, currentIdentity), [{ ...payload(), operationId: record.operationId, state: "PENDING" }]);
 });
 

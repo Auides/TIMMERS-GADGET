@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useOfflineVault } from "@/lib/offline/offline-auth-provider";
-import type { OfflineCustomerRecord, OfflineReadSnapshot } from "@/lib/offline/types";
+import type { OfflineCustomerRecord, OfflineReadSnapshot, OfflineSupplierRecord } from "@/lib/offline/types";
 
 export type OfflineNormalReadMode = "catalogue" | "inventory" | "customers" | "suppliers";
 
@@ -18,7 +18,7 @@ function LockedOfflineData({ returnTo }: { returnTo: string }) {
 const labels: Record<OfflineNormalReadMode, string> = { catalogue: "Catalogue", inventory: "Inventory", customers: "Customers", suppliers: "Suppliers" };
 
 export function OfflineNormalRead({ mode, returnTo }: { mode: OfflineNormalReadMode; returnTo: string }) {
-  const { unlocked, lock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates, readCustomerUpdateReviews, queueSupplierCreate, readPendingSupplierCreates, syncOfflineMutations } = useOfflineVault();
+  const { unlocked, lock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates, readCustomerUpdateReviews, queueSupplierCreate, readPendingSupplierCreates, queueSupplierUpdate, readPendingSupplierUpdates, readSupplierUpdateReviews, syncOfflineMutations } = useOfflineVault();
   const [snapshot, setSnapshot] = useState<OfflineReadSnapshot | null>(null);
   const [message, setMessage] = useState("Loading encrypted local data…");
   const [search, setSearch] = useState("");
@@ -33,12 +33,19 @@ export function OfflineNormalRead({ mode, returnTo }: { mode: OfflineNormalReadM
   const [customerBusy, setCustomerBusy] = useState(false);
   const [customerMessage, setCustomerMessage] = useState("");
   const [pendingSuppliers, setPendingSuppliers] = useState<Awaited<ReturnType<typeof readPendingSupplierCreates>>>([]);
+  const [pendingSupplierUpdates, setPendingSupplierUpdates] = useState<Awaited<ReturnType<typeof readPendingSupplierUpdates>>>([]);
+  const [supplierUpdateReviews, setSupplierUpdateReviews] = useState<Awaited<ReturnType<typeof readSupplierUpdateReviews>>>([]);
   const [supplierName, setSupplierName] = useState("");
   const [supplierContact, setSupplierContact] = useState("");
   const [supplierPhone, setSupplierPhone] = useState("");
   const [supplierEmail, setSupplierEmail] = useState("");
   const [supplierBusy, setSupplierBusy] = useState(false);
   const [supplierMessage, setSupplierMessage] = useState("");
+  const [supplierEdit, setSupplierEdit] = useState<OfflineSupplierRecord | null>(null);
+  const [supplierEditName, setSupplierEditName] = useState("");
+  const [supplierEditContact, setSupplierEditContact] = useState("");
+  const [supplierEditPhone, setSupplierEditPhone] = useState("");
+  const [supplierEditEmail, setSupplierEditEmail] = useState("");
   const [customerEdit, setCustomerEdit] = useState<OfflineCustomerRecord | null>(null);
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -61,15 +68,20 @@ export function OfflineNormalRead({ mode, returnTo }: { mode: OfflineNormalReadM
     return () => { disposed = true; };
   }, [mode, unlocked, readPendingCustomerCreates, readPendingCustomerUpdates, readCustomerUpdateReviews]);
   const loadSupplierMutationProjection = async () => {
-    try { setPendingSuppliers(await readPendingSupplierCreates()); }
+    try {
+      const [creates, updates, reviews] = await Promise.all([readPendingSupplierCreates(), readPendingSupplierUpdates(), readSupplierUpdateReviews()]);
+      setPendingSuppliers(creates); setPendingSupplierUpdates(updates); setSupplierUpdateReviews(reviews);
+    }
     catch { setSupplierMessage("Pending supplier data could not be read until offline access is unlocked again."); }
   };
   useEffect(() => {
     if (mode !== "suppliers" || !unlocked || unlocked.role !== "MANAGER") return;
     let disposed = false;
-    void readPendingSupplierCreates().then((creates) => { if (!disposed) setPendingSuppliers(creates); }).catch(() => { if (!disposed) setSupplierMessage("Pending supplier data could not be read until offline access is unlocked again."); });
+    void Promise.all([readPendingSupplierCreates(), readPendingSupplierUpdates(), readSupplierUpdateReviews()]).then(([creates, updates, reviews]) => {
+      if (!disposed) { setPendingSuppliers(creates); setPendingSupplierUpdates(updates); setSupplierUpdateReviews(reviews); }
+    }).catch(() => { if (!disposed) setSupplierMessage("Pending supplier data could not be read until offline access is unlocked again."); });
     return () => { disposed = true; };
-  }, [mode, unlocked, readPendingSupplierCreates]);
+  }, [mode, unlocked, readPendingSupplierCreates, readPendingSupplierUpdates, readSupplierUpdateReviews]);
   const refresh = async () => { if (!online) { setMessage("Reconnect before refreshing. Existing encrypted data remains available."); return; } setRefreshing(true); try { await refreshBusinessCache(); const cached = await readBusinessCache(); setSnapshot(cached); setMessage(cached ? "Encrypted snapshot refreshed." : "The refreshed snapshot could not be read."); } catch { setMessage("The encrypted snapshot could not be refreshed."); } finally { setRefreshing(false); } };
   const query = search.trim().toLocaleLowerCase();
   const catalogue = useMemo(() => snapshot?.catalogue.filter((record) => !query || [record.productName, record.productSku, record.productBarcode, record.variantLabel, record.variantSku, record.variantBarcode].filter(Boolean).some((value) => value!.toLocaleLowerCase().includes(query))) ?? [], [query, snapshot]);
@@ -78,6 +90,8 @@ export function OfflineNormalRead({ mode, returnTo }: { mode: OfflineNormalReadM
   const suppliers = useMemo(() => snapshot?.suppliers.filter((record) => !query || [record.businessName, record.contactName, record.phone, record.email].filter(Boolean).some((value) => value!.toLocaleLowerCase().includes(query))) ?? [], [query, snapshot]);
   const pendingUpdateByCustomer = useMemo(() => new Map(pendingCustomerUpdates.map((record) => [record.customerId, record])), [pendingCustomerUpdates]);
   const reviewByCustomer = useMemo(() => new Map(customerUpdateReviews.map((record) => [record.customerId, record])), [customerUpdateReviews]);
+  const pendingUpdateBySupplier = useMemo(() => new Map(pendingSupplierUpdates.map((record) => [record.supplierId, record])), [pendingSupplierUpdates]);
+  const reviewBySupplier = useMemo(() => new Map(supplierUpdateReviews.map((record) => [record.supplierId, record])), [supplierUpdateReviews]);
   const queueCustomer = async () => {
     setCustomerBusy(true); setCustomerMessage("");
     try { await queueCustomerCreate({ fullName: customerName, phone: customerPhone, email: customerEmail }); setCustomerName(""); setCustomerPhone(""); setCustomerEmail(""); await loadCustomerMutationProjection(); setCustomerMessage("Customer saved securely on this device and pending synchronization."); }
@@ -111,6 +125,18 @@ export function OfflineNormalRead({ mode, returnTo }: { mode: OfflineNormalReadM
       await loadSupplierMutationProjection();
       setSupplierMessage("Supplier saved securely on this device and pending synchronization.");
     } catch (error) { setSupplierMessage(error instanceof Error ? error.message : "The supplier could not be queued securely."); }
+    finally { setSupplierBusy(false); }
+  };
+  const beginSupplierEdit = (record: OfflineSupplierRecord) => {
+    setSupplierEdit(record); setSupplierEditName(record.businessName); setSupplierEditContact(record.contactName ?? ""); setSupplierEditPhone(record.phone ?? ""); setSupplierEditEmail(record.email ?? ""); setSupplierMessage("");
+  };
+  const queueSupplierEdit = async () => {
+    if (!supplierEdit) return;
+    setSupplierBusy(true); setSupplierMessage("");
+    try {
+      await queueSupplierUpdate({ supplierId: supplierEdit.supplierId, businessName: supplierEditName, contactName: supplierEditContact, phone: supplierEditPhone, email: supplierEditEmail, expectedVersion: supplierEdit.supplierVersion });
+      setSupplierEdit(null); await loadSupplierMutationProjection(); setSupplierMessage("Supplier edit saved securely on this device and pending synchronization.");
+    } catch (error) { setSupplierMessage(error instanceof Error ? error.message : "The supplier edit could not be queued securely."); }
     finally { setSupplierBusy(false); }
   };
   const syncSuppliers = async () => {
@@ -164,7 +190,21 @@ export function OfflineNormalRead({ mode, returnTo }: { mode: OfflineNormalReadM
       {(pendingCustomers.length || pendingCustomerUpdates.length) ? <button className="app-button-secondary" disabled={!online || customerBusy} type="button" onClick={() => void syncCustomers()}>{customerBusy ? "Synchronizing…" : online ? "Synchronize pending customer changes" : "Reconnect to synchronize"}</button> : null}
       {customerMessage ? <p className="offline-access-message" role="status">{customerMessage}</p> : null}
     </section> : null}
-    {mode === "suppliers" ? <section className="offline-workspace-section"><h2>Supplier references</h2><div className="offline-workspace-list">{suppliers.map((record) => <article key={record.supplierId}><div><strong>{record.businessName}</strong><span>Authoritative cached record · {[record.contactName, record.phone, record.email].filter(Boolean).join(" · ") || "No contact details recorded."}</span></div><div><strong>{record.active ? "Active" : "Archived"}</strong></div></article>)}{pendingSuppliers.map((record) => <article key={record.operationId}><div><strong>{record.businessName}</strong><span>{[record.contactName, record.phone, record.email].filter(Boolean).join(" · ") || "No contact details recorded."}</span></div><div><strong>Pending synchronization</strong><span>Not yet confirmed by the server.</span></div></article>)}</div>{!online ? <form className="offline-customer-create" onSubmit={(event) => { event.preventDefault(); void queueSupplier(); }}><h3>Add supplier offline</h3><p>This supplier is encrypted on this device and pending synchronization. It is not yet a server-confirmed supplier.</p><label>Business name<input required value={supplierName} onChange={(event) => setSupplierName(event.target.value)} /></label><label>Contact name (optional)<input value={supplierContact} onChange={(event) => setSupplierContact(event.target.value)} /></label><label>Phone (optional)<input value={supplierPhone} onChange={(event) => setSupplierPhone(event.target.value)} /></label><label>Email (optional)<input value={supplierEmail} onChange={(event) => setSupplierEmail(event.target.value)} /></label><button className="app-button-primary" disabled={supplierBusy} type="submit">{supplierBusy ? "Saving securely…" : "Save for synchronization"}</button></form> : <p className="offline-mutation-notice">Supplier creation is available only from this encrypted offline workspace while disconnected.</p>}{pendingSuppliers.length ? <button className="app-button-secondary" disabled={!online || supplierBusy} type="button" onClick={() => void syncSuppliers()}>{supplierBusy ? "Synchronizing…" : online ? "Synchronize pending supplier changes" : "Reconnect to synchronize"}</button> : null}{supplierMessage ? <p className="offline-access-message" role="status">{supplierMessage}</p> : null}<p className="offline-mutation-notice">Supplier updates, purchases, payments, refunds, and all procurement writes require an internet connection.</p></section> : null}
+    {mode === "suppliers" ? <section className="offline-workspace-section">
+      <h2>Supplier references</h2><div className="offline-workspace-list">
+        {suppliers.map((record) => { const pendingUpdate = pendingUpdateBySupplier.get(record.supplierId); const review = reviewBySupplier.get(record.supplierId); return <article key={record.supplierId}>
+          <div><strong>{record.businessName}</strong><span>Authoritative cached record · {[record.contactName, record.phone, record.email].filter(Boolean).join(" · ") || "No contact details recorded."}</span></div><div><strong>{record.active ? "Active" : "Archived"}</strong></div>
+          {pendingUpdate ? <div><strong>Pending synchronization</strong><span>Proposed offline edit: {pendingUpdate.businessName}</span></div> : null}
+          {review?.state === "CONFLICT" ? <div><strong>Needs review after reconnect</strong><span>The server changed this supplier before the offline edit could apply.</span></div> : null}
+          {!online && !review ? <button className="app-button-secondary" disabled={supplierBusy} type="button" onClick={() => beginSupplierEdit(record)}>Edit offline</button> : null}
+        </article>; })}
+        {pendingSuppliers.map((record) => <article key={record.operationId}><div><strong>{record.businessName}</strong><span>{[record.contactName, record.phone, record.email].filter(Boolean).join(" · ") || "No contact details recorded."}</span></div><div><strong>Pending synchronization</strong><span>Not yet confirmed by the server; editing is unavailable until it is confirmed.</span></div></article>)}
+      </div>
+      {!online ? <><form className="offline-customer-create" onSubmit={(event) => { event.preventDefault(); void queueSupplier(); }}><h3>Add supplier offline</h3><p>This supplier is encrypted on this device and pending synchronization. It is not yet a server-confirmed supplier.</p><label>Business name<input required value={supplierName} onChange={(event) => setSupplierName(event.target.value)} /></label><label>Contact name (optional)<input value={supplierContact} onChange={(event) => setSupplierContact(event.target.value)} /></label><label>Phone (optional)<input value={supplierPhone} onChange={(event) => setSupplierPhone(event.target.value)} /></label><label>Email (optional)<input value={supplierEmail} onChange={(event) => setSupplierEmail(event.target.value)} /></label><button className="app-button-primary" disabled={supplierBusy} type="submit">{supplierBusy ? "Saving securely…" : "Save for synchronization"}</button></form>
+        {supplierEdit ? <form className="offline-customer-create" onSubmit={(event) => { event.preventDefault(); void queueSupplierEdit(); }}><h3>Edit supplier offline</h3><p>This is an encrypted proposed edit. It will apply only if the server supplier still matches this snapshot&apos;s version.</p><label>Business name<input required value={supplierEditName} disabled={!supplierEdit.active} onChange={(event) => setSupplierEditName(event.target.value)} /></label><label>Contact name (optional)<input value={supplierEditContact} onChange={(event) => setSupplierEditContact(event.target.value)} /></label><label>Phone (optional)<input value={supplierEditPhone} onChange={(event) => setSupplierEditPhone(event.target.value)} /></label><label>Email (optional)<input value={supplierEditEmail} onChange={(event) => setSupplierEditEmail(event.target.value)} /></label>{!supplierEdit.active ? <p>Archived supplier business names cannot be changed.</p> : null}<button className="app-button-primary" disabled={supplierBusy} type="submit">{supplierBusy ? "Saving securely…" : "Save edit for synchronization"}</button><button className="app-button-secondary" disabled={supplierBusy} type="button" onClick={() => setSupplierEdit(null)}>Cancel</button></form> : null}
+      </> : <p className="offline-mutation-notice">Supplier creation and editing are available only from this encrypted offline workspace while disconnected.</p>}
+      {(pendingSuppliers.length || pendingSupplierUpdates.length) ? <button className="app-button-secondary" disabled={!online || supplierBusy} type="button" onClick={() => void syncSuppliers()}>{supplierBusy ? "Synchronizing…" : online ? "Synchronize pending supplier changes" : "Reconnect to synchronize"}</button> : null}{supplierMessage ? <p className="offline-access-message" role="status">{supplierMessage}</p> : null}<p className="offline-mutation-notice">Purchases, payments, refunds, archive actions, and all other procurement writes require an internet connection.</p>
+    </section> : null}
     <button className="app-button-secondary" type="button" onClick={lock}>Lock offline access</button>
   </section></main>;
 }

@@ -4,6 +4,7 @@ import test from "node:test";
 
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const migration = source("../supabase/migrations/20260930163023_phase4_offline_customer_supplier_reference_snapshots.sql");
+const supplierUpdateMigration = source("../supabase/migrations/20261005100000_phase6b_offline_supplier_update.sql");
 const route = source("../src/app/api/offline/read-snapshot/route.ts");
 const cache = source("../src/lib/offline/business-cache.ts");
 const fallback = source("../src/app/offline/offline-normal-read.tsx");
@@ -23,7 +24,9 @@ test("server returns no supplier data for staff and maps only permitted referenc
   assert.match(route, /profile\.role === "MANAGER"/);
   assert.match(route, /Promise\.resolve\(\{ data: \[\], error: null \}\)/);
   assert.match(route, /staff_customer_reference_snapshot/);
-  assert.match(route, /manager_supplier_reference_snapshot/);
+  assert.match(route, /manager_supplier_reference_snapshot_v2/);
+  assert.match(supplierUpdateMigration, /returns table\(supplier_id uuid, business_name text, contact_name text, phone text, email text, active boolean, supplier_version timestamptz\)/);
+  assert.match(supplierUpdateMigration, /s\.updated_at/);
   assert.doesNotMatch(route, /credit|debt|payment|purchase|cost|profit|margin|notes/i);
 });
 
@@ -45,7 +48,8 @@ test("offline reference UI searches only unlocked in-memory data and limits muta
   assert.match(fallback, /Needs review after reconnect/);
   assert.match(fallback, /editing is unavailable until it is confirmed/);
   assert.match(fallback, /Add supplier offline/);
-  assert.match(fallback, /Supplier updates, purchases, payments, refunds, and all procurement writes require an internet connection\./);
+  assert.match(fallback, /Supplier creation and editing are available only from this encrypted offline workspace while disconnected\./);
+  assert.match(fallback, /Purchases, payments, refunds, archive actions, and all other procurement writes require an internet connection\./);
   assert.match(fallback, /Offline data is locked\./);
   assert.doesNotMatch(fallback, /enqueue|outbox/i);
 });

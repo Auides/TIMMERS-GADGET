@@ -26,7 +26,7 @@ const snapshot = (capturedAt = "2026-09-30T10:00:00.000Z"): OfflineReadSnapshot 
   catalogue: [{ productId: "product-1", productName: "Widget", productSku: "WIDGET-1", productBarcode: null, brandName: null, categoryName: null, serialized: false, variantId: null, variantLabel: null, variantSku: null, variantBarcode: null, condition: "NEW", quantity: 4, sellingPrice: 1500 }],
   serializedInventory: [{ unitId: "unit-1", productId: "product-1", productName: "Widget", productSku: "WIDGET-1", productBarcode: null, productModel: null, brandName: null, categoryName: null, variantId: null, variantLabel: null, variantSku: null, variantBarcode: null, condition: "NEW", status: "AVAILABLE", sellingPrice: 1500, identifierType: "SERIAL", identifierValue: "SERIAL-001" }],
   customers: [{ customerId: "customer-1", fullName: "Ada Customer", phone: "08000000000", email: "ada@example.test", customerVersion: "2026-09-30T09:00:00.000Z" }],
-  suppliers: [{ supplierId: "supplier-1", businessName: "Acme Supplier", contactName: "Ayo Contact", phone: "08001111111", email: "ayo@example.test", active: true }],
+  suppliers: [{ supplierId: "supplier-1", businessName: "Acme Supplier", contactName: "Ayo Contact", phone: "08001111111", email: "ayo@example.test", active: true, supplierVersion: "2026-09-30T09:00:00.000Z" }],
 });
 
 async function vaultKey(userId = userOne) {

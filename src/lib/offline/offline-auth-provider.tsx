@@ -8,6 +8,7 @@ import { fetchOfflineReadSnapshot, readOfflineReadCache, refreshOfflineReadCache
 import { createCustomerCreatePayload, readPendingCustomerCreates, type CustomerCreatePayload, type PendingCustomerCreate } from "./customer-create";
 import { assertCustomerUpdateEligible, createCustomerUpdatePayload, readCustomerUpdateReviews, readPendingCustomerUpdates, type CustomerUpdatePayload, type CustomerUpdateReview, type PendingCustomerUpdate } from "./customer-update";
 import { assertSupplierCreateEligible, createSupplierCreatePayload, readPendingSupplierCreates, type PendingSupplierCreate, type SupplierCreatePayload } from "./supplier-create";
+import { assertSupplierUpdateEligible, createSupplierUpdatePayload, readPendingSupplierUpdates, readSupplierUpdateReviews, type PendingSupplierUpdate, type SupplierUpdatePayload, type SupplierUpdateReview } from "./supplier-update";
 import { registeredOfflineMutationExecutors } from "./mutation-executors";
 import { EncryptedMutationSyncEngine, enqueueEncryptedMutation, type MutationSyncResult, type ReplayAuthorization } from "./mutation-transport";
 import { crossedLagosBusinessDate, millisecondsUntilNextLagosBusinessDate, OFFLINE_INACTIVITY_MS, requiresOperationalRelock } from "./session";
@@ -28,6 +29,9 @@ type OfflineVaultContextValue = {
   readCustomerUpdateReviews: () => Promise<CustomerUpdateReview[]>;
   queueSupplierCreate: (fields: { businessName: string; contactName?: string | null; phone?: string | null; email?: string | null }) => Promise<SupplierCreatePayload & { operationId: string }>;
   readPendingSupplierCreates: () => Promise<PendingSupplierCreate[]>;
+  queueSupplierUpdate: (fields: SupplierUpdatePayload) => Promise<SupplierUpdatePayload & { operationId: string }>;
+  readPendingSupplierUpdates: () => Promise<PendingSupplierUpdate[]>;
+  readSupplierUpdateReviews: () => Promise<SupplierUpdateReview[]>;
   syncOfflineMutations: () => Promise<MutationSyncResult>;
 };
 const OfflineVaultContext = createContext<OfflineVaultContextValue | undefined>(undefined);
@@ -103,6 +107,28 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     if (!unlocked || !vaultKey.current) return [];
     return readPendingSupplierCreates(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
   }, [unlocked]);
+  const queueSupplierUpdate = useCallback(async (fields: SupplierUpdatePayload) => {
+    if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before editing a supplier.");
+    assertSupplierCreateEligible(unlocked.role);
+    if (typeof navigator !== "undefined" && navigator.onLine) throw new Error("Supplier edits are queued only while offline.");
+    const identity = { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current };
+    const payload = createSupplierUpdatePayload(fields);
+    const [pendingCreates, reviews] = await Promise.all([
+      readPendingSupplierCreates(new DexieOfflineStore(), identity),
+      readSupplierUpdateReviews(new DexieOfflineStore(), identity),
+    ]);
+    assertSupplierUpdateEligible(payload.supplierId, pendingCreates.map((record) => record.supplierId), reviews.map((record) => record.supplierId));
+    const operation = await enqueueEncryptedMutation(new DexieOfflineStore(), identity, { mutationType: "SUPPLIER_UPDATE", payload });
+    return { ...payload, operationId: operation.operationId };
+  }, [unlocked]);
+  const pendingSupplierUpdates = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) return [];
+    return readPendingSupplierUpdates(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
+  }, [unlocked]);
+  const supplierUpdateReviews = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) return [];
+    return readSupplierUpdateReviews(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
+  }, [unlocked]);
   const syncOfflineMutations = useCallback(async () => {
     if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before synchronizing local changes.");
     const identity = { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current };
@@ -153,7 +179,7 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     return () => window.clearTimeout(timer);
   }, [lock, unlocked]);
 
-  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates: pendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates: pendingCustomerUpdates, readCustomerUpdateReviews: customerUpdateReviews, queueSupplierCreate, readPendingSupplierCreates: pendingSupplierCreates, syncOfflineMutations }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache, queueCustomerCreate, pendingCustomerCreates, queueCustomerUpdate, pendingCustomerUpdates, customerUpdateReviews, queueSupplierCreate, pendingSupplierCreates, syncOfflineMutations]);
+  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates: pendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates: pendingCustomerUpdates, readCustomerUpdateReviews: customerUpdateReviews, queueSupplierCreate, readPendingSupplierCreates: pendingSupplierCreates, queueSupplierUpdate, readPendingSupplierUpdates: pendingSupplierUpdates, readSupplierUpdateReviews: supplierUpdateReviews, syncOfflineMutations }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache, queueCustomerCreate, pendingCustomerCreates, queueCustomerUpdate, pendingCustomerUpdates, customerUpdateReviews, queueSupplierCreate, pendingSupplierCreates, queueSupplierUpdate, pendingSupplierUpdates, supplierUpdateReviews, syncOfflineMutations]);
   return <OfflineVaultContext.Provider value={value}>{children}</OfflineVaultContext.Provider>;
 }
 

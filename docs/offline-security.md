@@ -150,6 +150,27 @@ makes an ambiguous lost response safe without trusting a cached role or exposing
 raw database errors. Supplier UPDATE and every procurement command remain
 online-only.
 
+### Phase 6B supplier-update boundary
+
+`SUPPLIER_UPDATE` uses the encrypted V4 mutation transport and is available only
+to an unlocked Manager. Its ciphertext contains the supplier UUID, the narrow
+editable supplier fields, and the authoritative `expectedVersion` supplied by
+the encrypted Manager snapshot. The version token is server-owned
+`suppliers.updated_at`; no cached role or client clock is trusted.
+
+The server rechecks the authenticated active profile and current Manager role
+at replay time. Durable idempotency is resolved before the supplier version is
+compared, so retrying a request whose response was lost after commit returns the
+original applied result instead of producing a false conflict. A genuinely
+stale version becomes terminal `CONFLICT` and never overwrites newer server
+data.
+
+Pending supplier creates cannot be updated offline, and an existing PENDING,
+SYNCING, or CONFLICT update prevents another offline update for the same
+supplier. Proposed edits remain encrypted at rest and are shown separately from
+the authoritative cached supplier record only while the vault is unlocked.
+The service worker and legacy plaintext outbox never receive or replay supplier
+update payloads.
 ## Risks and next steps
 
 IndexedDB is not a hardware-backed secure store. A compromised, unlocked browser or XSS can access data available to the page, so strong CSP, dependency hygiene, device controls, and fast lock behavior remain essential. Shared-device employees should lock before handing off a device and disable enrollment on retirement/replacement.

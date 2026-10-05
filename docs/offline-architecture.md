@@ -161,11 +161,11 @@ It does not cache Supabase authenticated responses, mutations, arbitrary non-GET
 
 ## Phase 6A: Manager-only offline supplier creation
 
-`SUPPLIER_CREATE` is the third and final enabled offline mutation in this phase.
-Only a Manager with an unlocked vault may queue the narrow existing supplier
-fields: one stable client-generated supplier UUID, business name, and optional
-contact name, phone, and email. STAFF cannot view supplier data or supplier
-creation controls; ADMIN remains outside the approved offline-cache model.
+`SUPPLIER_CREATE` is the third enabled offline mutation. Only a Manager with an
+unlocked vault may queue the narrow existing supplier fields: one stable
+client-generated supplier UUID, business name, and optional contact name, phone,
+and email. STAFF cannot view supplier data or supplier creation controls; ADMIN
+remains outside the approved offline-cache model.
 
 The queue labels each locally decrypted entry **Pending synchronization** and
 keeps it separate from the authoritative encrypted supplier snapshot. On
@@ -176,5 +176,27 @@ the original supplier rather than creating a duplicate. An applied replay
 refreshes the encrypted supplier snapshot, so the confirmed supplier replaces
 the pending projection while the terminal operation remains non-replay history.
 
-Supplier update, archival, purchases, receiving, payments, refunds, inventory,
-catalogue, sales, and every other mutation remain online-only.
+## Phase 6B: Manager-only conflict-safe offline supplier updates
+
+`SUPPLIER_UPDATE` is the fourth enabled offline mutation. It is Manager-only and
+carries only the supplier UUID, editable supplier name/contact fields, and the
+authoritative `supplierVersion` obtained from the server snapshot. The version
+is backed by `suppliers.updated_at`, maintained by the existing
+`suppliers_updated` trigger.
+
+Pending-created suppliers cannot be edited offline. A supplier that already has
+a PENDING, SYNCING, or CONFLICT update also cannot queue another update. The UI
+keeps the **Authoritative cached record** separate from the **Proposed offline
+edit**; conflicted updates remain visible as **Needs review after reconnect**
+rather than overwriting the cached server record.
+
+Replay rechecks the current authenticated active profile and Manager role.
+Server idempotency is resolved before comparing the supplier version, so a
+response lost after a committed update replays as APPLIED instead of becoming a
+false conflict. If the authoritative supplier version has changed, the replay
+becomes a terminal CONFLICT and does not overwrite newer server data or retry as
+a transient failure. Successful replay refreshes the encrypted supplier
+reference snapshot.
+
+Supplier archival, purchases, receiving, payments, refunds, inventory,
+catalogue, sales, and every other unapproved mutation remain online-only.

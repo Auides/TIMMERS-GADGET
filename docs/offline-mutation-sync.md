@@ -123,12 +123,12 @@ explicitly out of scope for this phase.
 
 ## Phase 6A: SUPPLIER_CREATE
 
-`SUPPLIER_CREATE` is the third and only additional registered executor. It is
-available only to a Manager and carries a stable client-generated supplier UUID,
-business name, optional contact name, optional phone, and optional email inside
-V4 ciphertext. STAFF has no supplier queue or mutation UI; Admin offline work
-is not expanded here. The legacy plaintext outbox and service worker never
-store, decrypt, or replay supplier requests.
+`SUPPLIER_CREATE` is the third registered executor. It is available only to a
+Manager and carries a stable client-generated supplier UUID, business name,
+optional contact name, optional phone, and optional email inside V4 ciphertext.
+STAFF has no supplier queue or mutation UI; Admin offline work is not expanded
+here. The legacy plaintext outbox and service worker never store, decrypt, or
+replay supplier requests.
 
 The source-only server boundary creates a Manager-only durable reservation with
 unique operation and idempotency identities plus a canonical request
@@ -137,8 +137,36 @@ then creates and audits the supplier in the same transaction for a new
 reservation. A retry after a lost response validates the original actor and
 fingerprint and returns the original supplier ID, preventing a duplicate. No
 new uniqueness rule is imposed on business name, phone, or email; the existing
-online supplier-create semantics are preserved. Validation, current-role loss,
-and deactivation are generic terminal `REJECTED` outcomes; actual idempotency
-or authoritative business conflicts are terminal `CONFLICT` outcomes. Supplier
-UPDATE and all procurement, inventory, catalogue, sales, payment, return,
-refund, credit, discount, and expense mutations remain unregistered.
+online supplier-create semantics are preserved.
+
+## Phase 6B: SUPPLIER_UPDATE
+
+`SUPPLIER_UPDATE` is the fourth registered executor and remains Manager-only.
+Its encrypted payload contains only the supplier UUID, the existing editable
+business/contact fields, and the authoritative `expectedVersion` from the
+Manager supplier snapshot. The version is sourced from server-maintained
+`suppliers.updated_at`.
+
+Before queueing, a pending local supplier create blocks editing that supplier,
+and an existing PENDING, SYNCING, or CONFLICT supplier update blocks another
+offline update. The encrypted proposal remains separate from the authoritative
+cached supplier record.
+
+Replay first rechecks the current authenticated session, active profile, and
+Manager role. The server resolves an existing matching operation/idempotency
+reservation before comparing the supplier version, so a lost-response retry
+returns the original committed result and becomes APPLIED rather than a false
+conflict. For a new operation, the supplier row is locked and its authoritative
+version is compared with `expectedVersion`. A stale version is terminal
+`CONFLICT`; newer server data is never overwritten and the operation is not
+retried as transient.
+
+A successful update preserves the existing archived-supplier business-name
+rule, records the resulting server version, writes the procurement audit entry,
+and refreshes the encrypted supplier reference snapshot. Validation, role loss,
+and deactivation are terminal `REJECTED` outcomes. The legacy plaintext outbox
+and service worker remain outside all business mutation replay.
+
+All procurement, inventory, catalogue, sales, payment, return, refund, credit,
+discount, expense, supplier archival, and other unapproved mutations remain
+unregistered.

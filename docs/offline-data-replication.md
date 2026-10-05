@@ -89,6 +89,27 @@ pending and cannot be mistaken for a server-confirmed supplier.
 After an applied replay, the existing authenticated snapshot refresh replaces
 that in-memory pending projection with the authoritative supplier record. The
 applied operation remains terminal history and is excluded from pending rows.
-Rejected/conflicted operations do not enter the snapshot. Supplier UPDATE,
-purchases, payments, refunds, and every other procurement/inventory operation
-remain online-only.
+Rejected/conflicted operations do not enter the snapshot.
+
+## Phase 6B supplier update replication and reconciliation
+
+The Manager supplier snapshot now also carries `supplierVersion`, sourced from
+the authoritative server-maintained `suppliers.updated_at` value. This token is
+replicated only as part of the encrypted supplier reference snapshot and is used
+as the optimistic-concurrency precondition for `SUPPLIER_UPDATE`.
+
+A proposed supplier edit is not merged into the authoritative cached supplier
+record. While unlocked, the UI derives the proposed values from the encrypted
+V4 mutation envelope and presents them separately from the authoritative cached
+record. PENDING and SYNCING proposals remain local pending work; CONFLICT
+proposals remain visible for review and do not alter the cached server record.
+
+A supplier with a pending local create cannot be updated offline, and an
+existing PENDING, SYNCING, or CONFLICT update blocks another offline edit for
+that supplier. On successful replay, the authenticated supplier snapshot is
+refreshed and the new authoritative version replaces the prior cached record.
+On stale-version conflict, no server data is overwritten and the cached
+authoritative supplier remains unchanged.
+
+Purchases, payments, refunds, supplier archival, and every other unapproved
+procurement/inventory operation remain online-only.
