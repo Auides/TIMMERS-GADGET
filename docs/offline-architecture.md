@@ -224,3 +224,24 @@ serialized products, then delegates unchanged to the existing authoritative
 canonical fingerprinting, reservation/replay, locking, WAC, effects, audit, and
 the atomic commit. Applied or conflicted replay refreshes only the approved
 encrypted reference snapshot; no purchase-history cache is introduced.
+
+## Phase 6C-C: conflict-safe offline serialized purchase receiving
+
+`PURCHASE_RECEIVE` remains the fifth approved encrypted command; Phase 6C-C
+extends it rather than adding a sixth command. An unlocked Manager can compose
+serialized lines only from product/variant/condition references already present
+in that Manager's encrypted serialized-inventory snapshot. Each proposed unit
+has a canonical decimal-string acquisition cost, optional warranty dates, and
+the established `IMEI_1`, `IMEI_2`, or `SERIAL` identifier intent. The client
+cannot supply unit IDs, status, lifecycle revision, WAC, pricing, or payments;
+`initialPayments` remains exactly `[]`.
+
+The narrow wrapper reauthorizes the active current Manager, rejects operational
+state, resolves a completed reservation before mutable catalogue checks, and
+then delegates to `purchase_receive`. The authoritative transaction generates
+the unit IDs/status/revision, normalizes identifiers, enforces global
+identifier uniqueness, calculates nonserialized WAC from server state, writes
+effects/movements/audit evidence, and applies the entire mixed receipt
+atomically. Identifier conflicts are terminal reviewable conflicts: no partial
+purchase, stock, WAC, unit, movement, lifecycle effect, payment, or audit
+success result is committed.

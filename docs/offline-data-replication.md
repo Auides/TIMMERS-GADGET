@@ -127,3 +127,19 @@ When the existing authoritative receipt transaction applies, the normal
 approved reference snapshot is refreshed. A rejected or conflicted envelope is
 not projected into catalogue/inventory state. No procurement history is cached,
 and Staff receives neither supplier data nor this receipt workflow.
+
+## Phase 6C-C serialized receipt reconciliation
+
+The encrypted snapshot is not expanded into an identifier registry. It only
+reuses the existing serialized-inventory product/variant/condition references
+to make a safe Manager receipt selection. Proposed serialized units are held
+only in an encrypted `PURCHASE_RECEIVE` intent; they never appear in cached
+serialized inventory, available-to-sell lists, normal quantity, authoritative
+purchase history, or any WAC projection before server confirmation.
+
+On replay, duplicate normalized identifiers—whether repeated in the request,
+already stored, or won by another device first—cause the authoritative whole
+receipt transaction to roll back. The client marks the envelope terminal
+`CONFLICT` and presents **Needs review after reconnect** without deleting or
+altering the encrypted proposal. A successful replay refreshes approved
+references; no purchase or identifier history is replicated.

@@ -2,14 +2,30 @@ import type { MutationExecutionOutcome, MutationExecutor, MutationVaultIdentity 
 import { decryptEncryptedMutationPayload } from "./mutation-transport.ts";
 import type { EncryptedMutationEnvelope, EncryptedMutationStore, JsonValue } from "./types.ts";
 
-export type PurchaseReceiveLine = {
+/** These values deliberately mirror the established database enum and add no new identifier kind. */
+export const purchaseReceiveIdentifierTypes = ["IMEI_1", "IMEI_2", "SERIAL"] as const;
+export type PurchaseReceiveIdentifierType = (typeof purchaseReceiveIdentifierTypes)[number];
+export type SerializedPurchaseIdentifier = { type: PurchaseReceiveIdentifierType; value: string };
+export type SerializedPurchaseUnit = {
+  acquisitionCostDecimal: string;
+  warrantyStart: string | null;
+  warrantyExpiry: string | null;
+  identifiers: SerializedPurchaseIdentifier[];
+};
+export type NonserializedPurchaseReceiveLine = {
   productId: string;
   variantId: string | null;
   condition: string;
   quantity: number;
   unitCostDecimal: string;
   notes: string | null;
+  serializedUnits: [];
 };
+export type SerializedPurchaseReceiveLine = Omit<NonserializedPurchaseReceiveLine, "unitCostDecimal" | "serializedUnits"> & {
+  unitCostDecimal: null;
+  serializedUnits: [SerializedPurchaseUnit, ...SerializedPurchaseUnit[]];
+};
+export type PurchaseReceiveLine = NonserializedPurchaseReceiveLine | SerializedPurchaseReceiveLine;
 export type PurchaseReceivePayload = {
   supplierId: string;
   receivedOn: string;
@@ -22,6 +38,10 @@ export type PurchaseReceivePayload = {
 export type PendingPurchaseReceive = PurchaseReceivePayload & { operationId: string; state: "PENDING" | "SYNCING" };
 export type PurchaseReceiveReview = { operationId: string; state: "PENDING" | "SYNCING" | "CONFLICT" };
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+const lineKeys = new Set(["productId", "variantId", "condition", "quantity", "unitCostDecimal", "notes", "serializedUnits"]);
+const serializedUnitKeys = new Set(["acquisitionCostDecimal", "warrantyStart", "warrantyExpiry", "identifiers"]);
+const identifierKeys = new Set(["type", "value"]);
 
 function optionalText(value: unknown) {
   if (value === null || value === undefined) return null;
@@ -40,6 +60,14 @@ function receivedOn(value: unknown) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Received date must use YYYY-MM-DD.");
   return value;
 }
+function optionalDate(value: unknown, field: string) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error(`${field} must use YYYY-MM-DD.`);
+  return value;
+}
+function rejectUnknownKeys(value: Record<string, unknown>, allowed: Set<string>, subject: string) {
+  if (Object.keys(value).some((key) => !allowed.has(key))) throw new Error(`${subject} contains unsupported or authoritative fields.`);
+}
 
 /** Normalizes currency without converting it to a JavaScript number. */
 export function canonicalDecimal(value: unknown) {
@@ -49,26 +77,53 @@ export function canonicalDecimal(value: unknown) {
   if (!match) throw new Error("Unit acquisition cost must be a non-negative canonical decimal with at most two decimal places.");
   return `${match[1]}.${(match[2] ?? "").padEnd(2, "0")}`;
 }
+function identifier(value: unknown): SerializedPurchaseIdentifier {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Every serialized identifier must be an object.");
+  const input = value as Record<string, unknown>;
+  rejectUnknownKeys(input, identifierKeys, "Serialized identifier");
+  const type = requiredText(input.type, "Identifier type").toUpperCase();
+  if (!(purchaseReceiveIdentifierTypes as readonly string[]).includes(type)) throw new Error("Unsupported serialized identifier type.");
+  const identifierValue = requiredText(input.value, "Identifier value");
+  if ((type === "IMEI_1" || type === "IMEI_2") && !/^\d{14,16}$/.test(identifierValue)) throw new Error("IMEI identifiers must contain 14 to 16 digits.");
+  return { type: type as PurchaseReceiveIdentifierType, value: identifierValue };
+}
+function serializedUnit(value: unknown): SerializedPurchaseUnit {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Every serialized purchase unit must be an object.");
+  const input = value as Record<string, unknown>;
+  rejectUnknownKeys(input, serializedUnitKeys, "Serialized purchase unit");
+  const warrantyStart = optionalDate(input.warrantyStart, "Warranty start");
+  const warrantyExpiry = optionalDate(input.warrantyExpiry, "Warranty expiry");
+  if (warrantyStart && warrantyExpiry && warrantyExpiry < warrantyStart) throw new Error("Warranty expiry cannot be earlier than warranty start.");
+  if (!Array.isArray(input.identifiers) || input.identifiers.length === 0) throw new Error("Every serialized purchase unit requires an identifier.");
+  return { acquisitionCostDecimal: canonicalDecimal(input.acquisitionCostDecimal), warrantyStart, warrantyExpiry, identifiers: input.identifiers.map(identifier) };
+}
 function line(value: unknown): PurchaseReceiveLine {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Every purchase receipt line must be an object.");
   const input = value as Record<string, unknown>;
-  if ("serializedUnits" in input || "serialized_units" in input) throw new Error("Offline purchase receiving does not support serialized units.");
+  rejectUnknownKeys(input, lineKeys, "Purchase receipt line");
   if (typeof input.quantity !== "number" || !Number.isSafeInteger(input.quantity) || input.quantity <= 0) throw new Error("Purchase receipt quantity must be a positive integer.");
-  return {
+  const base = {
     productId: uuid(input.productId, "productId"),
     variantId: input.variantId === null || input.variantId === undefined || input.variantId === "" ? null : uuid(input.variantId, "variantId"),
     condition: requiredText(input.condition, "Condition").toUpperCase(),
     quantity: input.quantity,
-    unitCostDecimal: canonicalDecimal(input.unitCostDecimal),
     notes: optionalText(input.notes),
   };
+  if (input.serializedUnits === undefined) return { ...base, unitCostDecimal: canonicalDecimal(input.unitCostDecimal), serializedUnits: [] };
+  if (!Array.isArray(input.serializedUnits)) throw new Error("Serialized purchase units must be an array.");
+  if (input.serializedUnits.length === 0) return { ...base, unitCostDecimal: canonicalDecimal(input.unitCostDecimal), serializedUnits: [] };
+  if (input.unitCostDecimal !== null && input.unitCostDecimal !== undefined && input.unitCostDecimal !== "") throw new Error("Serialized purchase lines cannot provide a line unit cost.");
+  const serializedUnits = input.serializedUnits.map(serializedUnit);
+  if (serializedUnits.length !== base.quantity) throw new Error("Serialized purchase quantity must equal the supplied serialized-unit count.");
+  return { ...base, unitCostDecimal: null, serializedUnits: serializedUnits as [SerializedPurchaseUnit, ...SerializedPurchaseUnit[]] };
 }
 
 export function parsePurchaseReceivePayload(value: JsonValue): PurchaseReceivePayload {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid purchase receipt payload.");
   const input = value as Record<string, unknown>;
-  if ("serializedUnits" in input || "serialized_units" in input) throw new Error("Offline purchase receiving does not support serialized units.");
-  if (!Array.isArray(input.lines) || input.lines.length === 0) throw new Error("At least one non-serialized purchase line is required.");
+  const allowed = new Set(["supplierId", "receivedOn", "supplierReference", "notes", "lines", "initialPayments"]);
+  rejectUnknownKeys(input, allowed, "Purchase receipt");
+  if (!Array.isArray(input.lines) || input.lines.length === 0) throw new Error("At least one purchase line is required.");
   if (!Array.isArray(input.initialPayments) || input.initialPayments.length !== 0) throw new Error("Offline purchase receiving does not support payments.");
   return {
     supplierId: uuid(input.supplierId, "supplierId"),
@@ -82,7 +137,7 @@ export function parsePurchaseReceivePayload(value: JsonValue): PurchaseReceivePa
 
 export function createPurchaseReceivePayload(fields: PurchaseReceivePayload) { return parsePurchaseReceivePayload(fields); }
 export function assertPurchaseReceiveEligible(role: string) {
-  if (role !== "MANAGER") throw new Error("Only Managers can receive non-serialized purchases while offline.");
+  if (role !== "MANAGER") throw new Error("Only Managers can receive purchases while offline.");
 }
 
 /** Pending receipt details are decrypted only into the active Manager vault's memory. */

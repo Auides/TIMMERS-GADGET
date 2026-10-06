@@ -195,3 +195,20 @@ IndexedDB is not a hardware-backed secure store. A compromised, unlocked browser
 Future phases may add approved operation-specific executors and server-side
 operational-session auditing. They must not weaken server-side RLS, audit,
 financial, inventory, idempotency, or concurrency protections.
+
+## Phase 6C-C serialized receipt privacy
+
+Serialized receipt identifiers, acquisition costs, warranty dates, and notes
+live only in the Manager's user/device-scoped V4 AES-GCM ciphertext until the
+vault is unlocked. They are absent from mutation metadata, localStorage,
+service-worker caches, and the legacy plaintext outbox. STAFF receives neither
+supplier references nor procurement receipt capability; ADMIN remains outside
+this offline business-cache model.
+
+At replay, the same-origin route and hardened `SECURITY DEFINER` wrapper check
+the live active profile and current Manager role. The wrapper pins its search
+path, revokes default execution, grants only `authenticated`, and accepts no
+client unit identity, status, or lifecycle revision. Identifier normalization
+and uniqueness remain authoritative server behavior. Generic terminal conflict
+responses expose no constraint names, SQLSTATE, raw error, or identifier-table
+detail.

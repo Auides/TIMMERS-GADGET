@@ -7,7 +7,21 @@ export const dynamic = "force-dynamic";
 const noStore = { "Cache-Control": "private, no-store, max-age=0" };
 const optionalText = z.string().trim().transform((value) => value || null).nullable().optional().transform((value) => value ?? null);
 const canonicalMoney = z.string().regex(/^(0|[1-9]\d{0,11})\.\d{2}$/);
-const lineSchema = z.object({ productId: z.string().uuid(), variantId: z.string().uuid().nullable(), condition: z.string().trim().min(1), quantity: z.number().int().positive(), unitCostDecimal: canonicalMoney, notes: optionalText }).strict();
+const identifierSchema = z.object({ type: z.enum(["IMEI_1", "IMEI_2", "SERIAL"]), value: z.string().trim().min(1) }).strict().superRefine((identifier, context) => {
+  if ((identifier.type === "IMEI_1" || identifier.type === "IMEI_2") && !/^\d{14,16}$/.test(identifier.value)) context.addIssue({ code: "custom", message: "Invalid identifier." });
+});
+const serializedUnitSchema = z.object({
+  acquisitionCostDecimal: canonicalMoney,
+  warrantyStart: z.string().date().nullable(),
+  warrantyExpiry: z.string().date().nullable(),
+  identifiers: z.array(identifierSchema).min(1),
+}).strict().superRefine((unit, context) => {
+  if (unit.warrantyStart && unit.warrantyExpiry && unit.warrantyExpiry < unit.warrantyStart) context.addIssue({ code: "custom", message: "Invalid warranty." });
+});
+const nonserializedLineSchema = z.object({ productId: z.string().uuid(), variantId: z.string().uuid().nullable(), condition: z.string().trim().min(1), quantity: z.number().int().positive(), unitCostDecimal: canonicalMoney, notes: optionalText, serializedUnits: z.array(z.never()).length(0) }).strict();
+const serializedLineSchema = z.object({ productId: z.string().uuid(), variantId: z.string().uuid().nullable(), condition: z.string().trim().min(1), quantity: z.number().int().positive(), unitCostDecimal: z.null(), notes: optionalText, serializedUnits: z.array(serializedUnitSchema).min(1) }).strict().superRefine((line, context) => {
+  if (line.quantity !== line.serializedUnits.length) context.addIssue({ code: "custom", message: "Invalid serialized quantity." });
+});
 const requestSchema = z.object({
   operationId: z.string().uuid(),
   idempotencyKey: z.string().uuid(),
@@ -15,7 +29,7 @@ const requestSchema = z.object({
   receivedOn: z.string().date(),
   supplierReference: optionalText,
   notes: optionalText,
-  lines: z.array(lineSchema).min(1),
+  lines: z.array(z.union([nonserializedLineSchema, serializedLineSchema])).min(1),
   initialPayments: z.array(z.never()).length(0),
 }).strict();
 
@@ -31,7 +45,7 @@ function purchaseResult(data: unknown) {
   return value && typeof value === "object" && "purchase_id" in value && typeof value.purchase_id === "string" ? value.purchase_id : null;
 }
 
-/** Authenticated Manager-only, nonserialized/no-payment replay boundary. */
+/** Authenticated Manager-only, no-payment replay boundary; purchase_receive remains authoritative. */
 export async function POST(request: Request) {
   const parsed = requestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return response("PURCHASE_RECEIVE_REJECTED", 400);
@@ -46,7 +60,21 @@ export async function POST(request: Request) {
     p_received_on: parsed.data.receivedOn,
     p_supplier_reference: parsed.data.supplierReference,
     p_notes: parsed.data.notes,
-    p_lines: parsed.data.lines.map((line) => ({ product_id: line.productId, variant_id: line.variantId, condition: line.condition, quantity: line.quantity, unit_cost: line.unitCostDecimal, notes: line.notes, serialized_units: [] })),
+    p_lines: parsed.data.lines.map((line) => ({
+      product_id: line.productId,
+      variant_id: line.variantId,
+      condition: line.condition,
+      quantity: line.quantity,
+      unit_cost: line.unitCostDecimal,
+      notes: line.notes,
+      serialized_units: line.serializedUnits.map((unit) => ({
+        acquisition_cost: unit.acquisitionCostDecimal,
+        condition: line.condition,
+        warranty_start: unit.warrantyStart,
+        warranty_expiry: unit.warrantyExpiry,
+        identifiers: unit.identifiers.map((identifier) => ({ type: identifier.type, value: identifier.value })),
+      })),
+    })),
     p_initial_payments: [],
   });
   if (error) return rpcFailure(error);

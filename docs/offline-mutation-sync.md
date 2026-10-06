@@ -188,3 +188,20 @@ rejects payments and serialized products and delegates to the established
 `purchase_receive` transaction, whose existing canonical fingerprint and
 actor-bound reservation resolve an ambiguous retry without duplication. The
 legacy outbox and service worker never store, decrypt, or replay this command.
+
+## Phase 6C-C: serialized PURCHASE_RECEIVE replay
+
+`PURCHASE_RECEIVE` is still the fifth and final approved executor. Its
+serialized form carries only per-unit actual acquisition cost, optional
+warranty dates, and established identifier intent; it always carries
+`initialPayments: []`. The API converts that narrow encrypted intent to the
+existing `purchase_receive` input shape. It does not calculate WAC, assign
+unit state, create a client ID, or implement a second receipt transaction.
+
+The authoritative receipt reservation/fingerprint runs before a completed
+retry makes any new uniqueness decision, so a lost response replays its
+original result as APPLIED rather than conflicting with its own identifiers.
+For a new request, any identifier collision is mapped to safe terminal
+`PURCHASE_RECEIVE_CONFLICT`; the encrypted intent is retained for Manager
+review and is never automatically retried. The existing server transaction is
+all-or-nothing, including mixed serialized/nonserialized receipt effects.
