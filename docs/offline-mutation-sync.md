@@ -170,3 +170,21 @@ and service worker remain outside all business mutation replay.
 All procurement, inventory, catalogue, sales, payment, return, refund, credit,
 discount, expense, supplier archival, and other unapproved mutations remain
 unregistered.
+
+## Phase 6C-B: PURCHASE_RECEIVE
+
+`PURCHASE_RECEIVE` is the fifth registered executor. It queues only a
+Manager's nonserialized purchase-receipt intent: supplier, received date,
+optional reference/notes, and one or more positive-integer line payloads with
+product/optional variant, condition, canonical decimal-string unit acquisition
+cost, and optional notes. The payload requires the exact `initialPayments: []`
+array. It has no serialized units, payment instrument, client WAC, purchase
+total, stock revision, or local inventory projection.
+
+The executor posts the stable V4 idempotency identity to the narrow
+same-origin route. The route and database wrapper recheck current Manager
+authorization; role loss/deactivation is terminal rejection. The wrapper
+rejects payments and serialized products and delegates to the established
+`purchase_receive` transaction, whose existing canonical fingerprint and
+actor-bound reservation resolve an ambiguous retry without duplication. The
+legacy outbox and service worker never store, decrypt, or replay this command.

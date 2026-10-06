@@ -113,3 +113,17 @@ authoritative supplier remains unchanged.
 
 Purchases, payments, refunds, supplier archival, and every other unapproved
 procurement/inventory operation remain online-only.
+
+## Phase 6C-B receipt-intent reconciliation
+
+No purchase, payment, acquisition-cost, WAC, total, or inventory-effect record
+is added to the read cache. A Manager may use the already-approved encrypted
+supplier and nonserialized catalogue reference resources to prepare a
+nonserialized receipt intent. The pending display decrypts only that Manager's
+V4 envelope in memory and labels it as not server-confirmed; it does not change
+quantity, WAC, or revision shown by the last synchronized inventory snapshot.
+
+When the existing authoritative receipt transaction applies, the normal
+approved reference snapshot is refreshed. A rejected or conflicted envelope is
+not projected into catalogue/inventory state. No procurement history is cached,
+and Staff receives neither supplier data nor this receipt workflow.

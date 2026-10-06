@@ -1,0 +1,56 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getAuthenticatedProfile } from "@/lib/auth";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
+const noStore = { "Cache-Control": "private, no-store, max-age=0" };
+const optionalText = z.string().trim().transform((value) => value || null).nullable().optional().transform((value) => value ?? null);
+const canonicalMoney = z.string().regex(/^(0|[1-9]\d{0,11})\.\d{2}$/);
+const lineSchema = z.object({ productId: z.string().uuid(), variantId: z.string().uuid().nullable(), condition: z.string().trim().min(1), quantity: z.number().int().positive(), unitCostDecimal: canonicalMoney, notes: optionalText }).strict();
+const requestSchema = z.object({
+  operationId: z.string().uuid(),
+  idempotencyKey: z.string().uuid(),
+  supplierId: z.string().uuid(),
+  receivedOn: z.string().date(),
+  supplierReference: optionalText,
+  notes: optionalText,
+  lines: z.array(lineSchema).min(1),
+  initialPayments: z.array(z.never()).length(0),
+}).strict();
+
+function response(code: string, status: number) { return NextResponse.json({ code }, { status, headers: noStore }); }
+function rpcFailure(error: { code?: string } | null) {
+  if (error?.code === "42501") return response("AUTHORIZATION_REJECTED", 403);
+  if (error?.code === "22023") return response("PURCHASE_RECEIVE_REJECTED", 422);
+  if (error?.code === "23505" || error?.code === "P0001") return response("PURCHASE_RECEIVE_CONFLICT", 409);
+  return response("PURCHASE_RECEIVE_UNAVAILABLE", 503);
+}
+function purchaseResult(data: unknown) {
+  const value = Array.isArray(data) ? data[0] : data;
+  return value && typeof value === "object" && "purchase_id" in value && typeof value.purchase_id === "string" ? value.purchase_id : null;
+}
+
+/** Authenticated Manager-only, nonserialized/no-payment replay boundary. */
+export async function POST(request: Request) {
+  const parsed = requestSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return response("PURCHASE_RECEIVE_REJECTED", 400);
+  const { profile } = await getAuthenticatedProfile();
+  if (!profile || profile.role !== "MANAGER") return response("AUTHORIZATION_REJECTED", 403);
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return response("PURCHASE_RECEIVE_UNAVAILABLE", 503);
+  const { data, error } = await supabase.rpc("offline_purchase_receive", {
+    // The established purchase reservation is keyed by the stable V4 idempotency key.
+    p_request_id: parsed.data.idempotencyKey,
+    p_supplier_id: parsed.data.supplierId,
+    p_received_on: parsed.data.receivedOn,
+    p_supplier_reference: parsed.data.supplierReference,
+    p_notes: parsed.data.notes,
+    p_lines: parsed.data.lines.map((line) => ({ product_id: line.productId, variant_id: line.variantId, condition: line.condition, quantity: line.quantity, unit_cost: line.unitCostDecimal, notes: line.notes, serialized_units: [] })),
+    p_initial_payments: [],
+  });
+  if (error) return rpcFailure(error);
+  const purchaseId = purchaseResult(data);
+  if (!purchaseId) return response("PURCHASE_RECEIVE_UNAVAILABLE", 503);
+  return NextResponse.json({ purchaseId }, { headers: noStore });
+}

@@ -9,6 +9,7 @@ import { createCustomerCreatePayload, readPendingCustomerCreates, type CustomerC
 import { assertCustomerUpdateEligible, createCustomerUpdatePayload, readCustomerUpdateReviews, readPendingCustomerUpdates, type CustomerUpdatePayload, type CustomerUpdateReview, type PendingCustomerUpdate } from "./customer-update";
 import { assertSupplierCreateEligible, createSupplierCreatePayload, readPendingSupplierCreates, type PendingSupplierCreate, type SupplierCreatePayload } from "./supplier-create";
 import { assertSupplierUpdateEligible, createSupplierUpdatePayload, readPendingSupplierUpdates, readSupplierUpdateReviews, type PendingSupplierUpdate, type SupplierUpdatePayload, type SupplierUpdateReview } from "./supplier-update";
+import { assertPurchaseReceiveEligible, createPurchaseReceivePayload, readPendingPurchaseReceives, readPurchaseReceiveReviews, type PendingPurchaseReceive, type PurchaseReceivePayload, type PurchaseReceiveReview } from "./purchase-receive";
 import { registeredOfflineMutationExecutors } from "./mutation-executors";
 import { EncryptedMutationSyncEngine, enqueueEncryptedMutation, type MutationSyncResult, type ReplayAuthorization } from "./mutation-transport";
 import { crossedLagosBusinessDate, millisecondsUntilNextLagosBusinessDate, OFFLINE_INACTIVITY_MS, requiresOperationalRelock } from "./session";
@@ -32,6 +33,9 @@ type OfflineVaultContextValue = {
   queueSupplierUpdate: (fields: SupplierUpdatePayload) => Promise<SupplierUpdatePayload & { operationId: string }>;
   readPendingSupplierUpdates: () => Promise<PendingSupplierUpdate[]>;
   readSupplierUpdateReviews: () => Promise<SupplierUpdateReview[]>;
+  queuePurchaseReceive: (fields: PurchaseReceivePayload) => Promise<PurchaseReceivePayload & { operationId: string }>;
+  readPendingPurchaseReceives: () => Promise<PendingPurchaseReceive[]>;
+  readPurchaseReceiveReviews: () => Promise<PurchaseReceiveReview[]>;
   syncOfflineMutations: () => Promise<MutationSyncResult>;
 };
 const OfflineVaultContext = createContext<OfflineVaultContextValue | undefined>(undefined);
@@ -129,6 +133,22 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     if (!unlocked || !vaultKey.current) return [];
     return readSupplierUpdateReviews(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
   }, [unlocked]);
+  const queuePurchaseReceive = useCallback(async (fields: PurchaseReceivePayload) => {
+    if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before receiving a purchase.");
+    assertPurchaseReceiveEligible(unlocked.role);
+    if (typeof navigator !== "undefined" && navigator.onLine) throw new Error("Purchase receiving is queued only while offline.");
+    const payload = createPurchaseReceivePayload(fields);
+    const operation = await enqueueEncryptedMutation(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current }, { mutationType: "PURCHASE_RECEIVE", payload });
+    return { ...payload, operationId: operation.operationId };
+  }, [unlocked]);
+  const pendingPurchaseReceives = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) return [];
+    return readPendingPurchaseReceives(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
+  }, [unlocked]);
+  const purchaseReceiveReviews = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) return [];
+    return readPurchaseReceiveReviews(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
+  }, [unlocked]);
   const syncOfflineMutations = useCallback(async () => {
     if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before synchronizing local changes.");
     const identity = { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current };
@@ -179,7 +199,7 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     return () => window.clearTimeout(timer);
   }, [lock, unlocked]);
 
-  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates: pendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates: pendingCustomerUpdates, readCustomerUpdateReviews: customerUpdateReviews, queueSupplierCreate, readPendingSupplierCreates: pendingSupplierCreates, queueSupplierUpdate, readPendingSupplierUpdates: pendingSupplierUpdates, readSupplierUpdateReviews: supplierUpdateReviews, syncOfflineMutations }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache, queueCustomerCreate, pendingCustomerCreates, queueCustomerUpdate, pendingCustomerUpdates, customerUpdateReviews, queueSupplierCreate, pendingSupplierCreates, queueSupplierUpdate, pendingSupplierUpdates, supplierUpdateReviews, syncOfflineMutations]);
+  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates: pendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates: pendingCustomerUpdates, readCustomerUpdateReviews: customerUpdateReviews, queueSupplierCreate, readPendingSupplierCreates: pendingSupplierCreates, queueSupplierUpdate, readPendingSupplierUpdates: pendingSupplierUpdates, readSupplierUpdateReviews: supplierUpdateReviews, queuePurchaseReceive, readPendingPurchaseReceives: pendingPurchaseReceives, readPurchaseReceiveReviews: purchaseReceiveReviews, syncOfflineMutations }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache, queueCustomerCreate, pendingCustomerCreates, queueCustomerUpdate, pendingCustomerUpdates, customerUpdateReviews, queueSupplierCreate, pendingSupplierCreates, queueSupplierUpdate, pendingSupplierUpdates, supplierUpdateReviews, queuePurchaseReceive, pendingPurchaseReceives, purchaseReceiveReviews, syncOfflineMutations]);
   return <OfflineVaultContext.Provider value={value}>{children}</OfflineVaultContext.Provider>;
 }
 

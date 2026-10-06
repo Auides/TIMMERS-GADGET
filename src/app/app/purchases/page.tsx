@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getAuthenticatedProfile } from "@/lib/auth";
 import { canManageProcurement } from "@/lib/authorization";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { OfflineNormalRouteFallback } from "@/app/offline/offline-normal-read";
 
 export const dynamic = "force-dynamic";
 
@@ -129,5 +130,6 @@ export default async function PurchasesPage({ searchParams }: { searchParams: Pr
         })}
       </div> : <p className="p-4 text-sm text-slate-600">{emptyMessage(search, stateFilter, paymentFilter)}</p>}
     </section>
+    <OfflineNormalRouteFallback mode="purchases" returnTo="/app/purchases" />
   </main>;
 }

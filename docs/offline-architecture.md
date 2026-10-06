@@ -200,3 +200,27 @@ reference snapshot.
 
 Supplier archival, purchases, receiving, payments, refunds, inventory,
 catalogue, sales, and every other unapproved mutation remain online-only.
+
+## Phase 6C-B: Manager-only offline nonserialized purchase receiving
+
+`PURCHASE_RECEIVE` is the fifth and only newly registered encrypted V4 command.
+It is a Manager-only receipt intent for one or more cached nonserialized
+catalogue lines. The UI is separate from supplier editing and is available only
+when disconnected, an authorized Manager vault is unlocked, and the encrypted
+Manager supplier/catalogue reference snapshot is present. STAFF cannot access
+procurement cache or controls; ADMIN stays online-only.
+
+The payload contains supplier, received date, optional reference/notes, and
+positive-integer nonserialized lines with product/optional variant, condition,
+canonical decimal-string acquisition cost, and optional line notes. It has the
+exact `initialPayments: []` shape. There is no serialized-unit input, no
+payment path, no local WAC, no local total, and no local inventory/revision
+projection. Pending receipts are explicitly not server-confirmed and never
+alter cached stock.
+
+Replay uses a narrow Manager-only database wrapper that rejects payments and
+serialized products, then delegates unchanged to the existing authoritative
+`purchase_receive` transaction. That transaction remains responsible for
+canonical fingerprinting, reservation/replay, locking, WAC, effects, audit, and
+the atomic commit. Applied or conflicted replay refreshes only the approved
+encrypted reference snapshot; no purchase-history cache is introduced.

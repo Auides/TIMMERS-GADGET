@@ -171,6 +171,23 @@ supplier. Proposed edits remain encrypted at rest and are shown separately from
 the authoritative cached supplier record only while the vault is unlocked.
 The service worker and legacy plaintext outbox never receive or replay supplier
 update payloads.
+
+## Phase 6C-B procurement receipt boundary
+
+Only an unlocked Manager vault can encrypt a `PURCHASE_RECEIVE` payload. It is
+user/device-scoped V4 AES-GCM ciphertext; plaintext metadata, service-worker
+caches, localStorage, and the legacy outbox never contain supplier references,
+notes, quantities, or acquisition costs. STAFF never receives supplier cache
+and cannot queue or view procurement receipts; ADMIN remains online-only.
+
+The client accepts only canonical decimal strings for acquisition cost and does
+not calculate WAC, totals, or inventory state. The authenticated route checks
+the current profile role again, and the `SECURITY DEFINER` wrapper checks the
+active profile/current Manager role again with a hardened search path. It
+requires `initial_payments` to be the exact empty array and rejects every
+serialized line before it invokes the established transaction. The existing
+transaction's reservation binds replay to the current actor and canonical
+fingerprint, so retries cannot duplicate a receipt.
 ## Risks and next steps
 
 IndexedDB is not a hardware-backed secure store. A compromised, unlocked browser or XSS can access data available to the page, so strong CSP, dependency hygiene, device controls, and fast lock behavior remain essential. Shared-device employees should lock before handing off a device and disable enrollment on retirement/replacement.

@@ -5,6 +5,7 @@ import test from "node:test";
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const cataloguePage = source("../src/app/app/catalogue/page.tsx");
 const inventoryPage = source("../src/app/app/inventory/page.tsx");
+const purchasesPage = source("../src/app/app/purchases/page.tsx");
 const fallback = source("../src/app/offline/offline-normal-read.tsx");
 const unlock = source("../src/app/offline/unlock/unlock.tsx");
 const serviceWorker = source("../public/sw.js");
@@ -42,6 +43,9 @@ test("offline fallback retains local search and makes every mutation unavailable
 test("safe routes receive offline fallback without caching authenticated application HTML", () => {
   assert.match(serviceWorker, /"\/app\/catalogue": "\/offline\/catalogue"/);
   assert.match(serviceWorker, /"\/app\/inventory": "\/offline\/inventory"/);
+  assert.match(purchasesPage, /OfflineNormalRouteFallback mode="purchases"/);
+  assert.match(serviceWorker, /"\/app\/purchases": "\/offline\/purchases"/);
+  assert.match(serviceWorker, /"\/offline\/purchases"/);
   assert.match(serviceWorker, /"\/offline\/catalogue"/);
   assert.match(serviceWorker, /"\/offline\/inventory"/);
   assert.match(serviceWorker, /LOCAL_OFFLINE_ROUTES\.includes\(url\.pathname\)/);
@@ -54,5 +58,6 @@ test("unlock returns only to an allow-listed normal or offline read route", () =
   assert.match(unlock, /"\/offline\/customers"/);
   assert.match(unlock, /"\/offline\/suppliers"/);
   assert.match(unlock, /"\/app\/suppliers"/);
+  assert.match(unlock, /"\/app\/purchases"/);
   assert.match(unlock, /router\.replace\(getSafeReturnTo\(\)\)/);
 });
