@@ -212,3 +212,18 @@ client unit identity, status, or lifecycle revision. Identifier normalization
 and uniqueness remain authoritative server behavior. Generic terminal conflict
 responses expose no constraint names, SQLSTATE, raw error, or identifier-table
 detail.
+
+## Phase 6C-D initial-payment privacy
+
+Initial-payment amount, method, paid date, reference, and notes live only in
+the Manager's user/device-scoped V4 AES-GCM receipt ciphertext until replay.
+They are absent from mutation metadata, IndexedDB plaintext records,
+local/session storage, service-worker caches or queues, the legacy outbox, and
+read snapshots. STAFF cannot compose or inspect procurement/payment intent;
+ADMIN remains outside this offline business-cache model.
+
+The route and hardened `SECURITY DEFINER` wrapper recheck the active current
+Manager role, accept only the five user-entered payment fields, and delegate
+all Lagos-date, total, ledger, and atomicity rules to `purchase_receive`.
+Pending intent is never confirmed financial history; standalone payment and
+reversal workflows remain online-only.

@@ -245,3 +245,21 @@ effects/movements/audit evidence, and applies the entire mixed receipt
 atomically. Identifier conflicts are terminal reviewable conflicts: no partial
 purchase, stock, WAC, unit, movement, lifecycle effect, payment, or audit
 success result is committed.
+
+## Phase 6C-D: initial payments within PURCHASE_RECEIVE
+
+This phase supersedes the earlier empty-payment restriction. `PURCHASE_RECEIVE`
+remains the fifth and final approved offline command and may contain zero or
+more initial supplier payments only with its receipt; standalone offline
+payments and reversals remain unsupported. Payment intent contains only a
+canonical decimal-string amount, established method, paid date, and optional
+reference/notes. It contains no payment/purchase identity, total, balance,
+payable, WAC, or authority field.
+
+The authoritative transaction alone calculates receipt total and rejects an
+aggregate payment above it (including every payment on a zero-total receipt).
+It atomically writes or rolls back receipt, inventory, serialized units,
+payment ledger rows, reservation, and audit history. Exact retries use the
+actor-bound canonical full payload and cannot duplicate payment or inventory.
+Pending intent is not financial history and does not affect balance, payable,
+reporting, or encrypted read snapshots before confirmation.

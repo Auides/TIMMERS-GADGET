@@ -7,6 +7,13 @@ export const dynamic = "force-dynamic";
 const noStore = { "Cache-Control": "private, no-store, max-age=0" };
 const optionalText = z.string().trim().transform((value) => value || null).nullable().optional().transform((value) => value ?? null);
 const canonicalMoney = z.string().regex(/^(0|[1-9]\d{0,11})\.\d{2}$/);
+const initialPaymentSchema = z.object({
+  amount: canonicalMoney.refine((value) => value !== "0.00"),
+  method: z.enum(["CASH", "POS", "BANK_TRANSFER", "OTHER"]),
+  paidOn: z.string().date(),
+  reference: optionalText,
+  notes: optionalText,
+}).strict();
 const identifierSchema = z.object({ type: z.enum(["IMEI_1", "IMEI_2", "SERIAL"]), value: z.string().trim().min(1) }).strict().superRefine((identifier, context) => {
   if ((identifier.type === "IMEI_1" || identifier.type === "IMEI_2") && !/^\d{14,16}$/.test(identifier.value)) context.addIssue({ code: "custom", message: "Invalid identifier." });
 });
@@ -30,7 +37,7 @@ const requestSchema = z.object({
   supplierReference: optionalText,
   notes: optionalText,
   lines: z.array(z.union([nonserializedLineSchema, serializedLineSchema])).min(1),
-  initialPayments: z.array(z.never()).length(0),
+  initialPayments: z.array(initialPaymentSchema),
 }).strict();
 
 function response(code: string, status: number) { return NextResponse.json({ code }, { status, headers: noStore }); }
@@ -45,7 +52,7 @@ function purchaseResult(data: unknown) {
   return value && typeof value === "object" && "purchase_id" in value && typeof value.purchase_id === "string" ? value.purchase_id : null;
 }
 
-/** Authenticated Manager-only, no-payment replay boundary; purchase_receive remains authoritative. */
+/** Authenticated Manager-only replay boundary; purchase_receive remains the financial authority. */
 export async function POST(request: Request) {
   const parsed = requestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return response("PURCHASE_RECEIVE_REJECTED", 400);
@@ -75,7 +82,13 @@ export async function POST(request: Request) {
         identifiers: unit.identifiers.map((identifier) => ({ type: identifier.type, value: identifier.value })),
       })),
     })),
-    p_initial_payments: [],
+    p_initial_payments: parsed.data.initialPayments.map((payment) => ({
+      amount: payment.amount,
+      method: payment.method,
+      paid_on: payment.paidOn,
+      reference: payment.reference,
+      notes: payment.notes,
+    })),
   });
   if (error) return rpcFailure(error);
   const purchaseId = purchaseResult(data);

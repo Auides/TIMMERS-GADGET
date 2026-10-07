@@ -143,3 +143,18 @@ receipt transaction to roll back. The client marks the envelope terminal
 `CONFLICT` and presents **Needs review after reconnect** without deleting or
 altering the encrypted proposal. A successful replay refreshes approved
 references; no purchase or identifier history is replicated.
+
+## Phase 6C-D initial-payment reconciliation
+
+An intended initial payment remains inside the encrypted pending
+`PURCHASE_RECEIVE` envelope with its receipt. While unlocked, a Manager may
+review its amount, method, paid date, reference, and notes only as **Not
+server-confirmed** intent. It is not copied into payment history, financial
+reports, supplier balance, payable calculation, purchase history, or the read
+cache.
+
+Successful authoritative replay atomically creates immutable ledger rows with
+the receipt and refreshes approved references. Conflict or rejection leaves the
+encrypted intent reviewable without projecting financial state. The client
+never caches or reconciles supplier balances; confirmed server ledger history
+is the sole source.

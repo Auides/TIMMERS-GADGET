@@ -205,3 +205,20 @@ For a new request, any identifier collision is mapped to safe terminal
 `PURCHASE_RECEIVE_CONFLICT`; the encrypted intent is retained for Manager
 review and is never automatically retried. The existing server transaction is
 all-or-nothing, including mixed serialized/nonserialized receipt effects.
+
+## Phase 6C-D: initial supplier payments within the fifth command
+
+This phase supersedes the earlier `initialPayments: []` restriction.
+`PURCHASE_RECEIVE` remains the fifth and only offline procurement mutation; it
+may carry zero or more initial payments with nonserialized and/or serialized
+receipt lines. There is no standalone supplier-payment command, no sixth
+mutation, and no offline reversal.
+
+The encrypted payload has only canonical decimal-string amount, an established
+method, paid date, and optional reference/notes. The route and wrapper reject
+authority fields and delegate to `purchase_receive`, which authoritatively
+checks Lagos date, method, aggregate amount against the server-calculated total,
+and the atomic ledger/inventory write. Pending intent affects no payable,
+balance, report, or payment history. The canonical receipt/payment fingerprint
+and actor-bound reservation make an exact lost-response retry return the
+original result without duplicate payment or inventory effects.

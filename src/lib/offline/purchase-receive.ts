@@ -5,6 +5,17 @@ import type { EncryptedMutationEnvelope, EncryptedMutationStore, JsonValue } fro
 /** These values deliberately mirror the established database enum and add no new identifier kind. */
 export const purchaseReceiveIdentifierTypes = ["IMEI_1", "IMEI_2", "SERIAL"] as const;
 export type PurchaseReceiveIdentifierType = (typeof purchaseReceiveIdentifierTypes)[number];
+/** Mirrors public.supplier_payment_method; no new payment instrument is introduced offline. */
+export const initialSupplierPaymentMethods = ["CASH", "POS", "BANK_TRANSFER", "OTHER"] as const;
+export type InitialSupplierPaymentMethod = (typeof initialSupplierPaymentMethods)[number];
+export type InitialSupplierPayment = {
+  /** Canonical decimal string, never a JavaScript monetary number. */
+  amount: string;
+  method: InitialSupplierPaymentMethod;
+  paidOn: string;
+  reference: string | null;
+  notes: string | null;
+};
 export type SerializedPurchaseIdentifier = { type: PurchaseReceiveIdentifierType; value: string };
 export type SerializedPurchaseUnit = {
   acquisitionCostDecimal: string;
@@ -32,8 +43,8 @@ export type PurchaseReceivePayload = {
   supplierReference: string | null;
   notes: string | null;
   lines: PurchaseReceiveLine[];
-  /** This offline operation has no payment path. It is always the exact empty array. */
-  initialPayments: [];
+  /** Intended initial payments remain ciphertext-only until the receipt transaction confirms them. */
+  initialPayments: InitialSupplierPayment[];
 };
 export type PendingPurchaseReceive = PurchaseReceivePayload & { operationId: string; state: "PENDING" | "SYNCING" };
 export type PurchaseReceiveReview = { operationId: string; state: "PENDING" | "SYNCING" | "CONFLICT" };
@@ -42,6 +53,7 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 const lineKeys = new Set(["productId", "variantId", "condition", "quantity", "unitCostDecimal", "notes", "serializedUnits"]);
 const serializedUnitKeys = new Set(["acquisitionCostDecimal", "warrantyStart", "warrantyExpiry", "identifiers"]);
 const identifierKeys = new Set(["type", "value"]);
+const initialPaymentKeys = new Set(["amount", "method", "paidOn", "reference", "notes"]);
 
 function optionalText(value: unknown) {
   if (value === null || value === undefined) return null;
@@ -76,6 +88,25 @@ export function canonicalDecimal(value: unknown) {
   const match = /^(0|[1-9]\d{0,11})(?:\.(\d{1,2}))?$/.exec(trimmed);
   if (!match) throw new Error("Unit acquisition cost must be a non-negative canonical decimal with at most two decimal places.");
   return `${match[1]}.${(match[2] ?? "").padEnd(2, "0")}`;
+}
+export function canonicalPositiveDecimal(value: unknown) {
+  const amount = canonicalDecimal(value);
+  if (amount === "0.00") throw new Error("Initial payment amount must be greater than zero.");
+  return amount;
+}
+function initialPayment(value: unknown): InitialSupplierPayment {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Every initial payment must be an object.");
+  const input = value as Record<string, unknown>;
+  rejectUnknownKeys(input, initialPaymentKeys, "Initial payment");
+  const method = requiredText(input.method, "Payment method").toUpperCase();
+  if (!(initialSupplierPaymentMethods as readonly string[]).includes(method)) throw new Error("Unsupported initial payment method.");
+  return {
+    amount: canonicalPositiveDecimal(input.amount),
+    method: method as InitialSupplierPaymentMethod,
+    paidOn: receivedOn(input.paidOn),
+    reference: optionalText(input.reference),
+    notes: optionalText(input.notes),
+  };
 }
 function identifier(value: unknown): SerializedPurchaseIdentifier {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Every serialized identifier must be an object.");
@@ -124,14 +155,14 @@ export function parsePurchaseReceivePayload(value: JsonValue): PurchaseReceivePa
   const allowed = new Set(["supplierId", "receivedOn", "supplierReference", "notes", "lines", "initialPayments"]);
   rejectUnknownKeys(input, allowed, "Purchase receipt");
   if (!Array.isArray(input.lines) || input.lines.length === 0) throw new Error("At least one purchase line is required.");
-  if (!Array.isArray(input.initialPayments) || input.initialPayments.length !== 0) throw new Error("Offline purchase receiving does not support payments.");
+  if (!Array.isArray(input.initialPayments)) throw new Error("Initial payments must be an array.");
   return {
     supplierId: uuid(input.supplierId, "supplierId"),
     receivedOn: receivedOn(input.receivedOn),
     supplierReference: optionalText(input.supplierReference),
     notes: optionalText(input.notes),
     lines: input.lines.map(line),
-    initialPayments: [],
+    initialPayments: input.initialPayments.map(initialPayment),
   };
 }
 
