@@ -105,9 +105,14 @@ export class DexieOfflineStore implements OfflineStore, OfflineBusinessCacheStor
     const { userId, deviceId } = records[0];
     if (records.some((record) => record.userId !== userId || record.deviceId !== deviceId || record.snapshotId !== records[0].snapshotId || record.capturedAt !== records[0].capturedAt || record.role !== records[0].role)) throw new Error("Offline snapshot scope is inconsistent.");
     await this.database.transaction("rw", this.database.encryptedBusinessCache, async () => {
-      await this.database.encryptedBusinessCache.where("[userId+deviceId]").equals([userId, deviceId]).delete();
+      const current = await this.database.encryptedBusinessCache.where("[userId+deviceId]").equals([userId, deviceId]).toArray();
+      await Promise.all(current.filter((record) => record.resource !== "adjustmentRequests").map((record) => this.database.encryptedBusinessCache.delete([record.userId, record.deviceId, record.resource])));
       await this.database.encryptedBusinessCache.bulkPut(records);
     });
+  }
+  async replaceOfflineAdjustmentRequestCache(record: EncryptedBusinessCacheRecord) {
+    if (record.resource !== "adjustmentRequests") throw new Error("Invalid adjustment-request cache resource.");
+    await this.database.encryptedBusinessCache.put(record);
   }
   async listOfflineBusinessCache(userId: string, deviceId: string) {
     return (await this.database.encryptedBusinessCache.where("[userId+deviceId]").equals([userId, deviceId]).toArray())

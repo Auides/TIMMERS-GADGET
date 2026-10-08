@@ -1,5 +1,11 @@
 # Offline access and local-data security
 
+## Phase 7A-C adjustment-request status confidentiality
+
+Status results are AES-GCM encrypted under the existing in-memory vault key with AAD bound to crypto version, user, device, and resource. They have no plaintext business fields in IndexedDB metadata or indexes and are purged or denied with the rest of the business cache after role change, deactivation, enrollment removal, or user/device mismatch.
+
+The status boundary is GET-only, checks the current active authenticated profile, calls a narrow hardened RPC, and is private and `no-store`. It exposes no financial or inventory-authority fields. Plaintext is rendered only after unlock, never reaches local/session storage or service-worker caches, and never grants local approval, rejection, execution, or stock-change authority.
+
 ## Scope and threat model
 
 Phase 2 adds a local unlock mechanism for a previously authenticated employee on one browser installation. It protects future encrypted offline records from casual device sharing and at-rest IndexedDB inspection. It does not make the browser, a compromised device, or a page with malicious script trusted. No production business data is cached in this phase.

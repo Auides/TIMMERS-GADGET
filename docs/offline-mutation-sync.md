@@ -1,5 +1,11 @@
 # Offline mutation synchronization
 
+## Phase 7A-C post-replay adjustment-request reconciliation
+
+`INVENTORY_ADJUSTMENT_REQUEST_CREATE` remains the sixth and final registered mutation. After its replay engine finishes, the client may refresh a separate encrypted authoritative status resource, then refresh the established read snapshot only when replay applied or conflicted work. Neither refresh is an executor, does not enqueue an operation, and does not alter local inventory, WAC, unit lifecycle, or approval state.
+
+Pending local request intent, server `OPEN`, server `RESOLVED`, and server `REJECTED` remain distinct states. The status resource is read-only and a later authenticated refresh can repair it after an availability failure without replaying a terminal or applied envelope.
+
 ## Scope
 
 Phase 4B creates local transport infrastructure only. No customer, supplier,

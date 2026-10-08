@@ -72,6 +72,6 @@ test("route and offline UI expose only a pending request, not approval or execut
   const ui = readFileSync(new URL("../src/app/offline/offline-inventory-adjustment-request.tsx", import.meta.url), "utf8");
   const worker = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
   assert.match(route, /profile\.role !== "STAFF" && profile\.role !== "MANAGER"/); assert.match(route, /requestedQuantity: z\.literal\(-1\)/); assert.match(route, /offline_inventory_adjustment_request_create/);
-  assert.match(ui, /Pending request; Not approved; No stock change\./); assert.match(ui, /Approval, rejection, and every inventory execution remain online-only Admin work/);
+  assert.match(ui, /Pending request — not yet synced; no stock change\./); assert.match(ui, /Approval, rejection, and every inventory execution remain online-only Admin work/);
   assert.doesNotMatch(ui, /enqueueOutbox|localStorage|sessionStorage|weightedAverageCost|inventoryRevision/i); assert.doesNotMatch(worker, /inventory-adjustment-request|INVENTORY_ADJUSTMENT_REQUEST_CREATE|outbox|mutation/i);
 });

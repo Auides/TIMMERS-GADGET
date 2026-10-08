@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { DexieOfflineStore } from "./db";
 import { getInstallationDevice } from "./device";
 import { unlockOfflineAccess } from "./offline-auth";
-import { fetchOfflineReadSnapshot, readOfflineReadCache, refreshOfflineReadCache } from "./business-cache";
+import { fetchOfflineAdjustmentRequestStatuses, fetchOfflineReadSnapshot, readOfflineAdjustmentRequestCache, readOfflineReadCache, refreshOfflineAdjustmentRequestCache, refreshOfflineReadCache } from "./business-cache";
 import { createCustomerCreatePayload, readPendingCustomerCreates, type CustomerCreatePayload, type PendingCustomerCreate } from "./customer-create";
 import { assertCustomerUpdateEligible, createCustomerUpdatePayload, readCustomerUpdateReviews, readPendingCustomerUpdates, type CustomerUpdatePayload, type CustomerUpdateReview, type PendingCustomerUpdate } from "./customer-update";
 import { assertSupplierCreateEligible, createSupplierCreatePayload, readPendingSupplierCreates, type PendingSupplierCreate, type SupplierCreatePayload } from "./supplier-create";
@@ -14,7 +14,7 @@ import { assertInventoryAdjustmentRequestEligible, createInventoryAdjustmentRequ
 import { registeredOfflineMutationExecutors } from "./mutation-executors";
 import { EncryptedMutationSyncEngine, enqueueEncryptedMutation, type MutationSyncResult, type ReplayAuthorization } from "./mutation-transport";
 import { crossedLagosBusinessDate, millisecondsUntilNextLagosBusinessDate, OFFLINE_INACTIVITY_MS, requiresOperationalRelock } from "./session";
-import { offlineReadRoles, type OfflineAuthProfile, type OfflineReadRole, type OfflineReadSnapshot } from "./types";
+import { offlineReadRoles, type OfflineAdjustmentRequestStatus, type OfflineAuthProfile, type OfflineReadRole, type OfflineReadSnapshot } from "./types";
 
 type UnlockedOfflineAccess = Pick<OfflineAuthProfile, "userId" | "displayName" | "role" | "deviceId" | "lastOnlineVerifiedAt"> & { unlockedAt: string; lastActivityAt: string };
 type OfflineVaultContextValue = {
@@ -24,6 +24,8 @@ type OfflineVaultContextValue = {
   unlock: (userId: string, passcode: string) => Promise<{ ok: boolean; reason?: "INVALID" | "THROTTLED" }>;
   readBusinessCache: () => Promise<OfflineReadSnapshot | null>;
   refreshBusinessCache: () => Promise<{ capturedAt: string; catalogueCount: number; serializedInventoryCount: number; customerCount: number; supplierCount: number }>;
+  readAdjustmentRequestStatusCache: () => Promise<OfflineAdjustmentRequestStatus[]>;
+  refreshAdjustmentRequestStatusCache: () => Promise<{ capturedAt: string; count: number }>;
   queueCustomerCreate: (fields: { fullName: string; phone?: string | null; email?: string | null }) => Promise<CustomerCreatePayload & { operationId: string }>;
   readPendingCustomerCreates: () => Promise<PendingCustomerCreate[]>;
   queueCustomerUpdate: (fields: CustomerUpdatePayload) => Promise<CustomerUpdatePayload & { operationId: string }>;
@@ -68,6 +70,16 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     if (!(offlineReadRoles as readonly string[]).includes(unlocked.role)) throw new Error("This role is not approved for offline business reads.");
     const snapshot = await fetchOfflineReadSnapshot();
     return refreshOfflineReadCache(new DexieOfflineStore(), { ...unlocked, role: unlocked.role as OfflineReadRole, vaultKey: vaultKey.current }, snapshot);
+  }, [unlocked]);
+  const readAdjustmentRequestStatusCache = useCallback(async () => {
+    if (!unlocked || !vaultKey.current || !(offlineReadRoles as readonly string[]).includes(unlocked.role)) return [];
+    return readOfflineAdjustmentRequestCache(new DexieOfflineStore(), { ...unlocked, role: unlocked.role as OfflineReadRole, vaultKey: vaultKey.current });
+  }, [unlocked]);
+  const refreshAdjustmentRequestStatusCache = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before refreshing local request statuses.");
+    if (!(offlineReadRoles as readonly string[]).includes(unlocked.role)) throw new Error("This role is not approved for offline request-status reads.");
+    const statuses = await fetchOfflineAdjustmentRequestStatuses();
+    return refreshOfflineAdjustmentRequestCache(new DexieOfflineStore(), { ...unlocked, role: unlocked.role as OfflineReadRole, vaultKey: vaultKey.current }, statuses);
   }, [unlocked]);
   const queueCustomerCreate = useCallback(async (fields: { fullName: string; phone?: string | null; email?: string | null }) => {
     if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before adding a customer.");
@@ -181,9 +193,16 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
       } catch { return { hasAuthenticatedSession: false, hasActiveProfile: false }; }
     };
     const result = await new EncryptedMutationSyncEngine(new DexieOfflineStore(), () => identity, authorization, registeredOfflineMutationExecutors).synchronize();
-    if ((result.applied > 0 || result.conflicted > 0) && (offlineReadRoles as readonly string[]).includes(unlocked.role)) {
-      const snapshot = await fetchOfflineReadSnapshot();
-      await refreshOfflineReadCache(new DexieOfflineStore(), { ...identity, role: unlocked.role as OfflineReadRole }, snapshot);
+    if ((offlineReadRoles as readonly string[]).includes(unlocked.role)) {
+      // Reconcile request outcomes before a post-replay inventory snapshot. Statuses never mutate local inventory.
+      try {
+        const statuses = await fetchOfflineAdjustmentRequestStatuses();
+        await refreshOfflineAdjustmentRequestCache(new DexieOfflineStore(), { ...identity, role: unlocked.role as OfflineReadRole }, statuses);
+      } catch { /* A later authenticated refresh can repair this read-only cache without changing replay results. */ }
+      if (result.applied > 0 || result.conflicted > 0) {
+        const snapshot = await fetchOfflineReadSnapshot();
+        await refreshOfflineReadCache(new DexieOfflineStore(), { ...identity, role: unlocked.role as OfflineReadRole }, snapshot);
+      }
     }
     return result;
   }, [unlocked]);
@@ -219,7 +238,7 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     return () => window.clearTimeout(timer);
   }, [lock, unlocked]);
 
-  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates: pendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates: pendingCustomerUpdates, readCustomerUpdateReviews: customerUpdateReviews, queueSupplierCreate, readPendingSupplierCreates: pendingSupplierCreates, queueSupplierUpdate, readPendingSupplierUpdates: pendingSupplierUpdates, readSupplierUpdateReviews: supplierUpdateReviews, queuePurchaseReceive, readPendingPurchaseReceives: pendingPurchaseReceives, readPurchaseReceiveReviews: purchaseReceiveReviews, queueInventoryAdjustmentRequest, readPendingInventoryAdjustmentRequests: pendingInventoryAdjustmentRequests, readInventoryAdjustmentRequestReviews: inventoryAdjustmentRequestReviews, syncOfflineMutations }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache, queueCustomerCreate, pendingCustomerCreates, queueCustomerUpdate, pendingCustomerUpdates, customerUpdateReviews, queueSupplierCreate, pendingSupplierCreates, queueSupplierUpdate, pendingSupplierUpdates, supplierUpdateReviews, queuePurchaseReceive, pendingPurchaseReceives, purchaseReceiveReviews, queueInventoryAdjustmentRequest, pendingInventoryAdjustmentRequests, inventoryAdjustmentRequestReviews, syncOfflineMutations]);
+  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache, readAdjustmentRequestStatusCache, refreshAdjustmentRequestStatusCache, queueCustomerCreate, readPendingCustomerCreates: pendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates: pendingCustomerUpdates, readCustomerUpdateReviews: customerUpdateReviews, queueSupplierCreate, readPendingSupplierCreates: pendingSupplierCreates, queueSupplierUpdate, readPendingSupplierUpdates: pendingSupplierUpdates, readSupplierUpdateReviews: supplierUpdateReviews, queuePurchaseReceive, readPendingPurchaseReceives: pendingPurchaseReceives, readPurchaseReceiveReviews: purchaseReceiveReviews, queueInventoryAdjustmentRequest, readPendingInventoryAdjustmentRequests: pendingInventoryAdjustmentRequests, readInventoryAdjustmentRequestReviews: inventoryAdjustmentRequestReviews, syncOfflineMutations }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache, readAdjustmentRequestStatusCache, refreshAdjustmentRequestStatusCache, queueCustomerCreate, pendingCustomerCreates, queueCustomerUpdate, pendingCustomerUpdates, customerUpdateReviews, queueSupplierCreate, pendingSupplierCreates, queueSupplierUpdate, pendingSupplierUpdates, supplierUpdateReviews, queuePurchaseReceive, pendingPurchaseReceives, purchaseReceiveReviews, queueInventoryAdjustmentRequest, pendingInventoryAdjustmentRequests, inventoryAdjustmentRequestReviews, syncOfflineMutations]);
   return <OfflineVaultContext.Provider value={value}>{children}</OfflineVaultContext.Provider>;
 }
 

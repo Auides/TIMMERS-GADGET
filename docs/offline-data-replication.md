@@ -1,5 +1,11 @@
 # Offline data replication
 
+## Phase 7A-C adjustment-request status resource
+
+`adjustmentRequests` is separately encrypted, user-and-device-scoped, and outside the atomic catalogue/inventory snapshot. Its private, `no-store` authenticated GET calls only `offline_inventory_adjustment_request_status_snapshot()`. STAFF receives only owned rows; MANAGER receives existing management-visible rows; ADMIN receives none. The projection contains no cost, WAC, COGS, stock balance, revision, effects, or movement fields.
+
+After replay, status refresh occurs before the ordinary snapshot refresh. Status results are informational only: they never change cached inventory or serialized units. A failed status refresh never changes durable replay results and can be reconciled later; the service worker neither caches this endpoint nor replays mutations.
+
 Phase 3A stores a complete, encrypted, user-and-device-scoped read snapshot in
 IndexedDB. It contains only the approved catalogue/non-serialized stock and
 serialized inventory fields returned by the authenticated snapshot boundary.
@@ -161,6 +167,6 @@ is the sole source.
 
 ## Phase 7A-B request projection boundary
 
-No adjustment-request status or inventory write is added to the encrypted read snapshot. The offline form chooses only from the pre-existing encrypted catalogue and serialized-inventory references; it does not mutate their cached quantity, condition, status, WAC, cost, revision, or selling-price fields. While the vault is unlocked, pending encrypted envelopes may be presented as **Pending request; Not approved; No stock change.** They are not authoritative request history and are not replicated as inventory state.
+No adjustment-request status or inventory write is added to the encrypted inventory read snapshot. The offline form chooses only from the pre-existing encrypted catalogue and serialized-inventory references; it does not mutate their cached quantity, condition, status, WAC, cost, revision, or selling-price fields. While the vault is unlocked, pending encrypted envelopes may be presented as **Pending request — not yet synced; no stock change.** They are not authoritative request history and are not replicated as inventory state.
 
-After an applied or conflicted replay, the normal approved read snapshot may be refreshed. Approval/execution status reconciliation is intentionally deferred to Phase 7A-C; an absent request-history cache must never be interpreted as zero stock or a completed adjustment.
+After replay, Phase 7A-C refreshes its separate authoritative request-status cache before a post-replay normal approved read snapshot. An absent status cache must never be interpreted as zero stock or a completed adjustment.

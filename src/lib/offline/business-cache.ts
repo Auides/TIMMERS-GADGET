@@ -1,5 +1,5 @@
 import { decryptVaultValue, encryptVaultValue } from "./crypto.ts";
-import { offlineReadRoles, type EncryptedBusinessCacheRecord, type OfflineBusinessCacheStore, type OfflineBusinessResource, type OfflineReadRole, type OfflineReadSnapshot } from "./types.ts";
+import { offlineReadRoles, type EncryptedBusinessCacheRecord, type OfflineAdjustmentRequestStatus, type OfflineBusinessCacheStore, type OfflineBusinessResource, type OfflineReadRole, type OfflineReadSnapshot } from "./types.ts";
 
 type CachedPayload = { capturedAt: string; records: unknown[] };
 type CacheIdentity = { userId: string; deviceId: string; role: OfflineReadRole };
@@ -80,4 +80,31 @@ export async function fetchOfflineReadSnapshot() {
   const response = await fetch("/api/offline/read-snapshot", { cache: "no-store", credentials: "same-origin" });
   if (!response.ok) throw new Error(response.status === 403 ? "Offline business reads are not available for this role." : "The offline snapshot could not be refreshed.");
   return response.json() as Promise<OfflineReadSnapshot>;
+}
+
+function validateAdjustmentRequests(records: OfflineAdjustmentRequestStatus[]) {
+  if (!Array.isArray(records) || records.some((record) => !record || !record.adjustmentRequestId || !record.productId || !["OPEN", "RESOLVED", "REJECTED"].includes(record.status) || !Number.isSafeInteger(record.requestedQuantity) || !record.reason || Number.isNaN(Date.parse(record.requestedAt)))) throw new Error("The adjustment-request status snapshot has an invalid shape.");
+}
+/** A narrow encrypted resource, independent of the inventory snapshot. */
+export async function refreshOfflineAdjustmentRequestCache(store: OfflineBusinessCacheStore, identity: CacheIdentityWithKey, records: OfflineAdjustmentRequestStatus[], dependencies: RefreshDependencies = {}) {
+  if (!isOfflineReadRole(identity.role)) throw new Error("This role is not approved for offline request-status reads.");
+  validateAdjustmentRequests(records);
+  const capturedAt = (dependencies.now ?? (() => new Date().toISOString()))();
+  const record = await encryptedRecord(identity, "adjustmentRequests", (dependencies.createId ?? makeSnapshotId)(), capturedAt, capturedAt, records);
+  if (!store.replaceOfflineAdjustmentRequestCache) throw new Error("The encrypted request-status cache is unavailable.");
+  await store.replaceOfflineAdjustmentRequestCache(record);
+  return { capturedAt, count: records.length };
+}
+export async function readOfflineAdjustmentRequestCache(store: OfflineBusinessCacheStore, identity: CacheIdentityWithKey): Promise<OfflineAdjustmentRequestStatus[]> {
+  if (!isOfflineReadRole(identity.role)) return [];
+  const record = (await store.listOfflineBusinessCache(identity.userId, identity.deviceId)).find((candidate) => candidate.resource === "adjustmentRequests" && candidate.role === identity.role);
+  if (!record) return [];
+  const payload = await decryptResource({ ...record, vaultKey: identity.vaultKey });
+  validateAdjustmentRequests(payload.records as OfflineAdjustmentRequestStatus[]);
+  return payload.records as OfflineAdjustmentRequestStatus[];
+}
+export async function fetchOfflineAdjustmentRequestStatuses() {
+  const response = await fetch("/api/offline/adjustment-request-statuses", { cache: "no-store", credentials: "same-origin" });
+  if (!response.ok) throw new Error(response.status === 403 ? "Offline adjustment-request statuses are not available for this role." : "Adjustment-request statuses could not be refreshed.");
+  return response.json() as Promise<OfflineAdjustmentRequestStatus[]>;
 }

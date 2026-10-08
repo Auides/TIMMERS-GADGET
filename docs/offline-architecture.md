@@ -1,5 +1,13 @@
 # Offline-first architecture foundation
 
+## Phase 7A-C: authoritative adjustment-request reconciliation
+
+The encrypted read cache has a separate narrow `adjustmentRequests` resource. After deliberate replay, STAFF and MANAGER refresh server-authoritative outcomes before any post-replay inventory snapshot. It contains only request identity, safe product/unit references, requested quantity and reason, status, review timestamps, and a rejection reason when present. It excludes stock projection, WAC, acquisition cost, COGS, revisions, movements, effects, and approval authority.
+
+Local intent remains **Pending request — not yet synced; no stock change.** Server `OPEN` is **Pending Admin review — no stock change yet**; `RESOLVED` is **Executed by Admin**; and `REJECTED` is **Rejected safely** with the server-provided reason. These labels never change local stock or serialized-unit state. A serialized identifier is rendered only from the already-approved encrypted serialized inventory snapshot.
+
+STAFF receives only owned requests, MANAGER retains existing request-management visibility, and ADMIN remains offline-excluded. This is not a seventh mutation and uses neither outbox. Admin execution and rejection stay online-only; the execution control uses actual request values and requests acquisition cost only for a positive non-serialized request.
+
 ## Purpose and authority
 
 TIMMERS GADGET is moving toward an offline-first operational application so an installed mobile or computer application can remain usable during connectivity loss. This Phase 1 foundation does not make any business workflow offline-capable. Supabase/PostgreSQL remains the authoritative server-side system after synchronization, and existing database authorization, RLS, audit, financial, inventory, idempotency, and concurrency protections are not bypassed.
@@ -268,4 +276,4 @@ reporting, or encrypted read snapshots before confirmation.
 
 `INVENTORY_ADJUSTMENT_REQUEST_CREATE` is the sixth and only new encrypted V4 command. It is available only to an unlocked active STAFF or MANAGER vault and creates a pending `inventory_adjustment_requests` row after reconnection. The same normal offline Inventory view uses only its existing encrypted snapshot to compose either a signed non-serialized request (product, optional variant, condition, quantity, reason) or a serialized one-unit-out request. It never uses the legacy outbox or service worker for replay.
 
-The command is request creation, not inventory execution: it cannot alter stock buckets, WAC, costs, revisions, movements, effects, serialized units, approval, or rejection. Pending UI is explicitly labelled **Pending request; Not approved; No stock change.** Admin remains offline-excluded. Opening stock, direct adjustments, approval/rejection, and Admin execution remain online-only. The existing positive-request approval UI defect is deliberately deferred to Phase 7A-C.
+The command is request creation, not inventory execution: it cannot alter stock buckets, WAC, costs, revisions, movements, effects, serialized units, approval, or rejection. Pending UI is explicitly labelled **Pending request — not yet synced; no stock change.** Admin remains offline-excluded. Opening stock, direct adjustments, approval/rejection, and Admin execution remain online-only. Phase 7A-C repairs the positive non-serialized request execution control without making it offline-capable.

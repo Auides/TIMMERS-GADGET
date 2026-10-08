@@ -131,7 +131,7 @@ export type EncryptedMutationStore = {
   purgeEncryptedMutationTransport?: (userId: string, deviceId: string) => Promise<void>;
 };
 
-export type OfflineBusinessResource = "catalogue" | "inventory" | "customers" | "suppliers";
+export type OfflineBusinessResource = "catalogue" | "inventory" | "customers" | "suppliers" | "adjustmentRequests";
 export type OfflineCatalogueRecord = {
   productId: string;
   productName: string;
@@ -172,6 +172,8 @@ export type OfflineSerializedInventoryRecord = {
 /** Operational reference data only; financial, credit, purchase, and history fields are excluded. */
 export type OfflineCustomerRecord = { customerId: string; fullName: string; phone: string | null; email: string | null; customerVersion: string };
 export type OfflineSupplierRecord = { supplierId: string; businessName: string; contactName: string | null; phone: string | null; email: string | null; active: boolean; /** Server-managed optimistic-concurrency token. */ supplierVersion: string };
+/** Authoritative request rows only; no cost, valuation, WAC, revision, or stock projection is replicated. */
+export type OfflineAdjustmentRequestStatus = { adjustmentRequestId: string; productId: string; variantId: string | null; unitId: string | null; condition: string | null; requestedQuantity: number; reason: string; status: "OPEN" | "RESOLVED" | "REJECTED"; requestedAt: string; reviewedAt: string | null; rejectionReason: string | null };
 
 export type OfflineReadSnapshot = {
   capturedAt: string;
@@ -199,4 +201,5 @@ export type OfflineBusinessCacheStore = {
   replaceOfflineBusinessCache(records: EncryptedBusinessCacheRecord[]): Promise<void>;
   listOfflineBusinessCache(userId: string, deviceId: string): Promise<EncryptedBusinessCacheRecord[]>;
   purgeOfflineBusinessCache(userId: string, deviceId: string): Promise<void>;
+  replaceOfflineAdjustmentRequestCache?: (record: EncryptedBusinessCacheRecord) => Promise<void>;
 };
