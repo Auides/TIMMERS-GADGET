@@ -32,11 +32,12 @@ test("offline normal views use the encrypted in-memory snapshot with distinct lo
   assert.doesNotMatch(fallback, /localStorage|sessionStorage|outbox/i);
 });
 
-test("offline fallback retains local search and makes every mutation unavailable", () => {
+test("offline fallback retains local search, keeps non-approved inventory writes unavailable, and mounts only the approved request flow", () => {
   assert.match(fallback, /Product, SKU, IMEI or serial/);
   assert.match(fallback, /Product, SKU or barcode/);
   assert.match(fallback, /Catalogue changes, prices, and archive actions require an internet connection\./);
-  assert.match(fallback, /Opening stock, adjustment requests, direct adjustments, serialized adjustments, and every inventory write require an internet connection\./);
+  assert.match(fallback, /Opening stock, direct adjustments, serialized adjustments, approval, rejection, and every inventory execution require an internet connection\./);
+  assert.match(fallback, /OfflineInventoryAdjustmentRequest/);
   assert.doesNotMatch(fallback, /enqueue|enqueueOutbox|outbox/i);
 });
 

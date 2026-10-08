@@ -263,3 +263,9 @@ payment ledger rows, reservation, and audit history. Exact retries use the
 actor-bound canonical full payload and cannot duplicate payment or inventory.
 Pending intent is not financial history and does not affect balance, payable,
 reporting, or encrypted read snapshots before confirmation.
+
+## Phase 7A-B: encrypted offline inventory adjustment requests
+
+`INVENTORY_ADJUSTMENT_REQUEST_CREATE` is the sixth and only new encrypted V4 command. It is available only to an unlocked active STAFF or MANAGER vault and creates a pending `inventory_adjustment_requests` row after reconnection. The same normal offline Inventory view uses only its existing encrypted snapshot to compose either a signed non-serialized request (product, optional variant, condition, quantity, reason) or a serialized one-unit-out request. It never uses the legacy outbox or service worker for replay.
+
+The command is request creation, not inventory execution: it cannot alter stock buckets, WAC, costs, revisions, movements, effects, serialized units, approval, or rejection. Pending UI is explicitly labelled **Pending request; Not approved; No stock change.** Admin remains offline-excluded. Opening stock, direct adjustments, approval/rejection, and Admin execution remain online-only. The existing positive-request approval UI defect is deliberately deferred to Phase 7A-C.

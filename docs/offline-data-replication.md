@@ -158,3 +158,9 @@ the receipt and refreshes approved references. Conflict or rejection leaves the
 encrypted intent reviewable without projecting financial state. The client
 never caches or reconciles supplier balances; confirmed server ledger history
 is the sole source.
+
+## Phase 7A-B request projection boundary
+
+No adjustment-request status or inventory write is added to the encrypted read snapshot. The offline form chooses only from the pre-existing encrypted catalogue and serialized-inventory references; it does not mutate their cached quantity, condition, status, WAC, cost, revision, or selling-price fields. While the vault is unlocked, pending encrypted envelopes may be presented as **Pending request; Not approved; No stock change.** They are not authoritative request history and are not replicated as inventory state.
+
+After an applied or conflicted replay, the normal approved read snapshot may be refreshed. Approval/execution status reconciliation is intentionally deferred to Phase 7A-C; an absent request-history cache must never be interpreted as zero stock or a completed adjustment.

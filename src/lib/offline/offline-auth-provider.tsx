@@ -10,6 +10,7 @@ import { assertCustomerUpdateEligible, createCustomerUpdatePayload, readCustomer
 import { assertSupplierCreateEligible, createSupplierCreatePayload, readPendingSupplierCreates, type PendingSupplierCreate, type SupplierCreatePayload } from "./supplier-create";
 import { assertSupplierUpdateEligible, createSupplierUpdatePayload, readPendingSupplierUpdates, readSupplierUpdateReviews, type PendingSupplierUpdate, type SupplierUpdatePayload, type SupplierUpdateReview } from "./supplier-update";
 import { assertPurchaseReceiveEligible, createPurchaseReceivePayload, readPendingPurchaseReceives, readPurchaseReceiveReviews, type PendingPurchaseReceive, type PurchaseReceivePayload, type PurchaseReceiveReview } from "./purchase-receive";
+import { assertInventoryAdjustmentRequestEligible, createInventoryAdjustmentRequestPayload, readInventoryAdjustmentRequestReviews, readPendingInventoryAdjustmentRequests, type InventoryAdjustmentRequestPayload, type InventoryAdjustmentRequestReview, type PendingInventoryAdjustmentRequest } from "./inventory-adjustment-request";
 import { registeredOfflineMutationExecutors } from "./mutation-executors";
 import { EncryptedMutationSyncEngine, enqueueEncryptedMutation, type MutationSyncResult, type ReplayAuthorization } from "./mutation-transport";
 import { crossedLagosBusinessDate, millisecondsUntilNextLagosBusinessDate, OFFLINE_INACTIVITY_MS, requiresOperationalRelock } from "./session";
@@ -36,6 +37,9 @@ type OfflineVaultContextValue = {
   queuePurchaseReceive: (fields: PurchaseReceivePayload) => Promise<PurchaseReceivePayload & { operationId: string }>;
   readPendingPurchaseReceives: () => Promise<PendingPurchaseReceive[]>;
   readPurchaseReceiveReviews: () => Promise<PurchaseReceiveReview[]>;
+  queueInventoryAdjustmentRequest: (fields: InventoryAdjustmentRequestPayload) => Promise<InventoryAdjustmentRequestPayload & { operationId: string }>;
+  readPendingInventoryAdjustmentRequests: () => Promise<PendingInventoryAdjustmentRequest[]>;
+  readInventoryAdjustmentRequestReviews: () => Promise<InventoryAdjustmentRequestReview[]>;
   syncOfflineMutations: () => Promise<MutationSyncResult>;
 };
 const OfflineVaultContext = createContext<OfflineVaultContextValue | undefined>(undefined);
@@ -149,6 +153,22 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     if (!unlocked || !vaultKey.current) return [];
     return readPurchaseReceiveReviews(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
   }, [unlocked]);
+  const queueInventoryAdjustmentRequest = useCallback(async (fields: InventoryAdjustmentRequestPayload) => {
+    if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before creating an adjustment request.");
+    assertInventoryAdjustmentRequestEligible(unlocked.role);
+    if (typeof navigator !== "undefined" && navigator.onLine) throw new Error("Adjustment requests are queued only while offline.");
+    const payload = createInventoryAdjustmentRequestPayload(fields);
+    const operation = await enqueueEncryptedMutation(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current }, { mutationType: "INVENTORY_ADJUSTMENT_REQUEST_CREATE", payload });
+    return { ...payload, operationId: operation.operationId };
+  }, [unlocked]);
+  const pendingInventoryAdjustmentRequests = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) return [];
+    return readPendingInventoryAdjustmentRequests(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
+  }, [unlocked]);
+  const inventoryAdjustmentRequestReviews = useCallback(async () => {
+    if (!unlocked || !vaultKey.current) return [];
+    return readInventoryAdjustmentRequestReviews(new DexieOfflineStore(), { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current });
+  }, [unlocked]);
   const syncOfflineMutations = useCallback(async () => {
     if (!unlocked || !vaultKey.current) throw new Error("Unlock offline access before synchronizing local changes.");
     const identity = { userId: unlocked.userId, deviceId: unlocked.deviceId, vaultKey: vaultKey.current };
@@ -199,7 +219,7 @@ export function OfflineVaultProvider({ children }: { children: React.ReactNode }
     return () => window.clearTimeout(timer);
   }, [lock, unlocked]);
 
-  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates: pendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates: pendingCustomerUpdates, readCustomerUpdateReviews: customerUpdateReviews, queueSupplierCreate, readPendingSupplierCreates: pendingSupplierCreates, queueSupplierUpdate, readPendingSupplierUpdates: pendingSupplierUpdates, readSupplierUpdateReviews: supplierUpdateReviews, queuePurchaseReceive, readPendingPurchaseReceives: pendingPurchaseReceives, readPurchaseReceiveReviews: purchaseReceiveReviews, syncOfflineMutations }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache, queueCustomerCreate, pendingCustomerCreates, queueCustomerUpdate, pendingCustomerUpdates, customerUpdateReviews, queueSupplierCreate, pendingSupplierCreates, queueSupplierUpdate, pendingSupplierUpdates, supplierUpdateReviews, queuePurchaseReceive, pendingPurchaseReceives, purchaseReceiveReviews, syncOfflineMutations]);
+  const value = useMemo(() => ({ unlocked, isUnlocked: Boolean(unlocked), lock, unlock, readBusinessCache, refreshBusinessCache, queueCustomerCreate, readPendingCustomerCreates: pendingCustomerCreates, queueCustomerUpdate, readPendingCustomerUpdates: pendingCustomerUpdates, readCustomerUpdateReviews: customerUpdateReviews, queueSupplierCreate, readPendingSupplierCreates: pendingSupplierCreates, queueSupplierUpdate, readPendingSupplierUpdates: pendingSupplierUpdates, readSupplierUpdateReviews: supplierUpdateReviews, queuePurchaseReceive, readPendingPurchaseReceives: pendingPurchaseReceives, readPurchaseReceiveReviews: purchaseReceiveReviews, queueInventoryAdjustmentRequest, readPendingInventoryAdjustmentRequests: pendingInventoryAdjustmentRequests, readInventoryAdjustmentRequestReviews: inventoryAdjustmentRequestReviews, syncOfflineMutations }), [lock, unlock, unlocked, readBusinessCache, refreshBusinessCache, queueCustomerCreate, pendingCustomerCreates, queueCustomerUpdate, pendingCustomerUpdates, customerUpdateReviews, queueSupplierCreate, pendingSupplierCreates, queueSupplierUpdate, pendingSupplierUpdates, supplierUpdateReviews, queuePurchaseReceive, pendingPurchaseReceives, purchaseReceiveReviews, queueInventoryAdjustmentRequest, pendingInventoryAdjustmentRequests, inventoryAdjustmentRequestReviews, syncOfflineMutations]);
   return <OfflineVaultContext.Provider value={value}>{children}</OfflineVaultContext.Provider>;
 }
 

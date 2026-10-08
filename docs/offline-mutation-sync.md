@@ -222,3 +222,9 @@ and the atomic ledger/inventory write. Pending intent affects no payable,
 balance, report, or payment history. The canonical receipt/payment fingerprint
 and actor-bound reservation make an exact lost-response retry return the
 original result without duplicate payment or inventory effects.
+
+## Phase 7A-B: `INVENTORY_ADJUSTMENT_REQUEST_CREATE`
+
+The registry's exact order is `CUSTOMER_CREATE`, `CUSTOMER_UPDATE`, `SUPPLIER_CREATE`, `SUPPLIER_UPDATE`, `PURCHASE_RECEIVE`, then `INVENTORY_ADJUSTMENT_REQUEST_CREATE`; no other mutation type is registered. The V4 envelope carries stable operation and idempotency UUIDs while its strict business payload remains encrypted. A durable server operation row binds actor, operation, idempotency key, and canonical fingerprint to one resulting adjustment-request row, so an exact retry returns that original row and any mismatch becomes a generic terminal conflict.
+
+The executor maps stale serialized availability and idempotency conflicts to terminal `CONFLICT`; malformed input, role loss, deactivation, and validation failures are terminal `REJECTED`; only unavailable server/network conditions retry. Replay invokes only the request-creation wrapper, which delegates to the existing request submitter and its established audit event. It does not call inventory execution or mutate cached inventory. Service workers and the legacy outbox neither store nor replay this command.

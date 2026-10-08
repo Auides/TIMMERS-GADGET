@@ -38,8 +38,8 @@ async function queued(payload = nonserializedPayload(), store = new MemoryStore(
   return { store, currentIdentity: unlockedIdentity, record };
 }
 
-test("PURCHASE_RECEIVE is the fifth and final registered executor", () => {
-  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE"]);
+test("PURCHASE_RECEIVE remains fifth and the approved adjustment request is sixth", () => {
+  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST_CREATE"]);
 });
 
 test("nonserialized and serialized receipt intent use canonical decimal strings and allow zero initial payments", () => {

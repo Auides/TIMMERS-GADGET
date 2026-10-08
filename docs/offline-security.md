@@ -227,3 +227,9 @@ Manager role, accept only the five user-entered payment fields, and delegate
 all Lagos-date, total, ledger, and atomicity rules to `purchase_receive`.
 Pending intent is never confirmed financial history; standalone payment and
 reversal workflows remain online-only.
+
+## Phase 7A-B adjustment-request privacy and authority
+
+An adjustment-request payload is V4 AES-GCM ciphertext scoped to one user and one device. It contains only request kind, product/variant IDs, exact condition or serialized unit ID, signed quantity, and reason; it contains no current quantity, price, WAC, acquisition cost, revision, value, or identifier text. The decrypted payload lives only in the unlocked vault's memory and is not placed in local/session storage, a service-worker cache, or the legacy outbox.
+
+The same-origin route and hardened `SECURITY DEFINER` function independently recheck active profile and current STAFF/MANAGER authorization. The function uses a pinned search path, has default execution revoked, and is granted only to `authenticated`. It rechecks product/variant/unit authority and requires a serialized unit to still be `AVAILABLE`; stale availability is a generic terminal conflict. ADMIN cannot queue or replay this command.

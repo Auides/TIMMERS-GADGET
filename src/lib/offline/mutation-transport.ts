@@ -7,7 +7,7 @@ const decoder = new TextDecoder();
 const MAX_RETRY_DELAY_SECONDS = 60 * 60;
 
 /** Identifiers are intentionally non-sensitive and do not grant any authority. */
-export const futureMutationTypes = ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST", "SALE_CREATE"] as const;
+export const futureMutationTypes = ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST_CREATE"] as const;
 export type FutureMutationType = (typeof futureMutationTypes)[number];
 export type MutationVaultIdentity = { userId: string; deviceId: string; vaultKey: CryptoKey };
 export type EncryptedMutationInput = { mutationType: FutureMutationType; payload: JsonValue };
