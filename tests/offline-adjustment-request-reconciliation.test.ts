@@ -46,8 +46,8 @@ test("status boundary is read-only, role-filtered, and cost-safe", () => {
   assert.doesNotMatch(migration, /\b(insert|update|delete)\s+into\s+public\./i);
 });
 
-test("reconciliation preserves the exact six-command registry and never makes status refresh an executor", () => {
-  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST_CREATE"]);
+test("reconciliation preserves the exact seven-command registry and never makes status refresh an executor", () => {
+  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST_CREATE", "SALE_CHECKOUT"]);
   const provider = readFileSync(new URL("../src/lib/offline/offline-auth-provider.tsx", import.meta.url), "utf8");
   assert.match(provider, /fetchOfflineAdjustmentRequestStatuses\(\)[\s\S]*refreshOfflineAdjustmentRequestCache[\s\S]*fetchOfflineReadSnapshot/);
   assert.match(provider, /Statuses never mutate local inventory|never change local inventory/);

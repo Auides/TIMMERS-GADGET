@@ -23,7 +23,7 @@ class MemoryCacheStore implements OfflineBusinessCacheStore {
 
 const snapshot = (capturedAt = "2026-09-30T10:00:00.000Z"): OfflineReadSnapshot => ({
   capturedAt,
-  catalogue: [{ productId: "product-1", productName: "Widget", productSku: "WIDGET-1", productBarcode: null, brandName: null, categoryName: null, serialized: false, variantId: null, variantLabel: null, variantSku: null, variantBarcode: null, condition: "NEW", quantity: 4, sellingPrice: 1500 }],
+  catalogue: [{ productId: "product-1", productName: "Widget", productSku: "WIDGET-1", productBarcode: null, brandName: null, categoryName: null, serialized: false, variantId: null, variantLabel: null, variantSku: null, variantBarcode: null, condition: "NEW", quantity: 4, cataloguePriceId: "price-1", priceRevision: 1, sellingPrice: 1500 }],
   serializedInventory: [{ unitId: "unit-1", productId: "product-1", productName: "Widget", productSku: "WIDGET-1", productBarcode: null, productModel: null, brandName: null, categoryName: null, variantId: null, variantLabel: null, variantSku: null, variantBarcode: null, condition: "NEW", status: "AVAILABLE", sellingPrice: 1500, identifierType: "SERIAL", identifierValue: "SERIAL-001" }],
   customers: [{ customerId: "customer-1", fullName: "Ada Customer", phone: "08000000000", email: "ada@example.test", customerVersion: "2026-09-30T09:00:00.000Z" }],
   suppliers: [{ supplierId: "supplier-1", businessName: "Acme Supplier", contactName: "Ayo Contact", phone: "08001111111", email: "ayo@example.test", active: true, supplierVersion: "2026-09-30T09:00:00.000Z" }],
@@ -80,7 +80,7 @@ test("role change and deactivation purge encrypted business cache", async () => 
 test("the authenticated snapshot boundary uses only approved read RPCs and forbids shared caching", () => {
   const source = readFileSync(new URL("../src/app/api/offline/read-snapshot/route.ts", import.meta.url), "utf8");
   assert.match(source, /getAuthenticatedProfile\(\)/);
-  assert.match(source, /staff_catalog_lookup/);
+  assert.match(source, /staff_offline_catalogue_snapshot/);
   assert.match(source, /staff_serialized_inventory_snapshot/);
   assert.match(source, /Cache-Control.*no-store/);
   assert.doesNotMatch(source, /\.from\(/);

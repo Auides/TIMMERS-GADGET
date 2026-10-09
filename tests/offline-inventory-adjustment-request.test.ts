@@ -23,8 +23,8 @@ async function identity() { const crypto = createOfflineCryptoService(1); return
 const nonserialized = () => createInventoryAdjustmentRequestPayload({ kind: "NON_SERIALIZED", productId: ids.product, variantId: null, condition: "NEW", unitId: null, requestedQuantity: -2, reason: "  Count correction  " });
 const serialized = () => createInventoryAdjustmentRequestPayload({ kind: "SERIALIZED", productId: ids.product, variantId: null, condition: null, unitId: ids.unit, requestedQuantity: -1, reason: "Missing unit" });
 
-test("the sixth and only added offline command is INVENTORY_ADJUSTMENT_REQUEST_CREATE", () => {
-  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST_CREATE"]);
+test("the sixth command remains INVENTORY_ADJUSTMENT_REQUEST_CREATE before seventh SALE_CHECKOUT", () => {
+  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST_CREATE", "SALE_CHECKOUT"]);
 });
 test("only Staff and Managers may create or replay offline adjustment requests", () => {
   assert.doesNotThrow(() => assertInventoryAdjustmentRequestEligible("STAFF")); assert.doesNotThrow(() => assertInventoryAdjustmentRequestEligible("MANAGER")); assert.throws(() => assertInventoryAdjustmentRequestEligible("ADMIN"));

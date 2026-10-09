@@ -239,3 +239,15 @@ reversal workflows remain online-only.
 An adjustment-request payload is V4 AES-GCM ciphertext scoped to one user and one device. It contains only request kind, product/variant IDs, exact condition or serialized unit ID, signed quantity, and reason; it contains no current quantity, price, WAC, acquisition cost, revision, value, or identifier text. The decrypted payload lives only in the unlocked vault's memory and is not placed in local/session storage, a service-worker cache, or the legacy outbox.
 
 The same-origin route and hardened `SECURITY DEFINER` function independently recheck active profile and current STAFF/MANAGER authorization. The function uses a pinned search path, has default execution revoked, and is granted only to `authenticated`. It rechecks product/variant/unit authority and requires a serialized unit to still be `AVAILABLE`; stale availability is a generic terminal conflict. ADMIN cannot queue or replay this command.
+## Provisional offline sales
+
+Offline sale payloads stay in the V4 AES-GCM encrypted mutation store and are
+bound to the active user/device through AAD. They contain no WAC, acquisition
+cost, COGS, valuation, stock revision, sale number, payment credentials, or
+serialized identifier/unit data. The browser may display a cached quote but is
+not a price or stock authority.
+
+The replay endpoint and database function recheck authenticated active
+Staff/Manager authority. The service worker neither stores nor replays any
+sale mutation or Supabase response, and authenticated `/app` HTML is not
+cached.

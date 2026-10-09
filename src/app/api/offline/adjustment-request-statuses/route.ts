@@ -5,7 +5,13 @@ import type { OfflineAdjustmentRequestStatus } from "@/lib/offline/types";
 
 export const dynamic = "force-dynamic";
 const noStore = { "Cache-Control": "private, no-store, max-age=0" };
-const text = (value: unknown, nullable = false) => value === null && nullable ? null : typeof value === "string" && value ? value : (() => { throw new Error("Invalid request-status projection."); })();
+function text(value: unknown): string;
+function text(value: unknown, nullable: true): string | null;
+function text(value: unknown, nullable = false): string | null {
+  if (value === null && nullable) return null;
+  if (typeof value === "string" && value) return value;
+  throw new Error("Invalid request-status projection.");
+}
 function row(value: Record<string, unknown>): OfflineAdjustmentRequestStatus {
   const quantity = Number(value.requested_quantity);
   const status = text(value.status);

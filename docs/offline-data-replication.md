@@ -170,3 +170,16 @@ is the sole source.
 No adjustment-request status or inventory write is added to the encrypted inventory read snapshot. The offline form chooses only from the pre-existing encrypted catalogue and serialized-inventory references; it does not mutate their cached quantity, condition, status, WAC, cost, revision, or selling-price fields. While the vault is unlocked, pending encrypted envelopes may be presented as **Pending request — not yet synced; no stock change.** They are not authoritative request history and are not replicated as inventory state.
 
 After replay, Phase 7A-C refreshes its separate authoritative request-status cache before a post-replay normal approved read snapshot. An absent status cache must never be interpreted as zero stock or a completed adjustment.
+## Offline sale quote metadata
+
+The encrypted nonserialized catalogue projection includes a safe catalogue
+price UUID and monotonic `quote_revision` alongside its selling price. This is
+not financial-cost data. Offline checkout sends the exact quote identity,
+revision, and decimal selling price. Replay locks and requires all three to
+match an active product, variant, and price row. A stale/inactive quote is an
+explicit conflict; replay never silently reprices a customer.
+
+Cached quantities remain advisory. Pending sales do not decrement or rewrite
+the authoritative encrypted inventory snapshot. Global stock cannot be
+guaranteed while disconnected, so insufficient stock on replay is explicit and
+requires cashier review.

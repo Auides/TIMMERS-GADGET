@@ -234,3 +234,28 @@ original result without duplicate payment or inventory effects.
 The registry's exact order is `CUSTOMER_CREATE`, `CUSTOMER_UPDATE`, `SUPPLIER_CREATE`, `SUPPLIER_UPDATE`, `PURCHASE_RECEIVE`, then `INVENTORY_ADJUSTMENT_REQUEST_CREATE`; no other mutation type is registered. The V4 envelope carries stable operation and idempotency UUIDs while its strict business payload remains encrypted. A durable server operation row binds actor, operation, idempotency key, and canonical fingerprint to one resulting adjustment-request row, so an exact retry returns that original row and any mismatch becomes a generic terminal conflict.
 
 The executor maps stale serialized availability and idempotency conflicts to terminal `CONFLICT`; malformed input, role loss, deactivation, and validation failures are terminal `REJECTED`; only unavailable server/network conditions retry. Replay invokes only the request-creation wrapper, which delegates to the existing request submitter and its established audit event. It does not call inventory execution or mutate cached inventory. Service workers and the legacy outbox neither store nor replay this command.
+
+## Phase 7B-B: `SALE_CHECKOUT`
+
+`SALE_CHECKOUT` is the seventh and final registered command in this phase. It
+is a provisional ordinary sale intent for Staff/Manager only: nonserialized
+lines, exact safe catalogue quote identity/version/value, positive quantities,
+and exactly one fully-paid CASH amount. Discounts, credit, serialized units,
+split/external payments, returns, and reversals are rejected instead of being
+implicitly transformed.
+
+Dependencies are encrypted payload intent. A dependent checkout waits for an
+APPLIED prerequisite such as `CUSTOMER_CREATE`; a conflicted/rejected,
+self, invalid, or cyclic prerequisite prevents automatic checkout replay and
+leaves a terminal review state. `PURCHASE_RECEIVE` is only a dependency if a
+future UI can actually select stock that requires the receipt first; the
+current UI does not project pending receipt stock. A customer update and an
+adjustment request are not checkout prerequisites.
+
+The source-only server boundary binds operation ID, idempotency key, actor, and
+canonical quote/payment intent. It returns a completed exact result before
+mutable checks, then delegates successful new requests to the established
+atomic finalizer. COGS/WAC, stock changes, payment insertion, effects, audit,
+and server sale number remain server-owned. A changed quote, inactive item, or
+insufficient current stock becomes an explicit conflict without silent price or
+quantity changes.

@@ -3,6 +3,7 @@ import { getAuthenticatedProfile } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CheckoutForm } from "./checkout-form";
+import { OfflineSalesRouteFallback } from "@/app/offline/offline-sale-checkout";
 
 export const dynamic = "force-dynamic";
 
@@ -39,10 +40,13 @@ export default async function NewSalePage() {
       .map((row) => ({ ...row, quantity: Number(row.quantity), selling_price: Number(row.selling_price) }));
   }
 
-  return <main className="app-page">
+  return <>
+  <main className="app-page">
     <p className="app-eyebrow">SALES</p>
     <div className="mb-6"><h1 className="app-page-title">New sale</h1><p className="app-page-subtitle">Complete an ordinary sale with authoritative prices, serialized-unit tracking, split payments, and atomic stock updates.</p></div>
     {loadFailed ? <p className="app-panel mb-5 border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Sellable catalogue stock could not be loaded. Check the connection and refresh before starting a sale.</p> : null}
     <CheckoutForm catalogueRows={catalogueRows} today={lagosDate()} />
-  </main>;
+  </main>
+  <OfflineSalesRouteFallback />
+  </>;
 }

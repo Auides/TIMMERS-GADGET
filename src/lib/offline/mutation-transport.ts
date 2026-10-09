@@ -7,11 +7,12 @@ const decoder = new TextDecoder();
 const MAX_RETRY_DELAY_SECONDS = 60 * 60;
 
 /** Identifiers are intentionally non-sensitive and do not grant any authority. */
-export const futureMutationTypes = ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST_CREATE"] as const;
+export const futureMutationTypes = ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST_CREATE", "SALE_CHECKOUT"] as const;
 export type FutureMutationType = (typeof futureMutationTypes)[number];
 export type MutationVaultIdentity = { userId: string; deviceId: string; vaultKey: CryptoKey };
 export type EncryptedMutationInput = { mutationType: FutureMutationType; payload: JsonValue };
 type Dependencies = { now?: () => string; createId?: () => string };
+type DependencyResolution = "READY" | "WAITING" | "CONFLICT" | "REJECTED";
 
 export type ReplayAuthorization = {
   /** These are prerequisites only; every executor must still use server-side authorization. */
@@ -41,7 +42,7 @@ export type MutationSyncResult = {
 
 const transitions: Readonly<Record<EncryptedMutationState, readonly EncryptedMutationState[]>> = {
   // A server-confirmed deactivation can reject an unstarted operation without decrypting it.
-  PENDING: ["SYNCING", "REJECTED"],
+  PENDING: ["SYNCING", "CONFLICT", "REJECTED"],
   SYNCING: ["PENDING", "APPLIED", "CONFLICT", "REJECTED"],
   APPLIED: [],
   CONFLICT: [],
@@ -125,6 +126,18 @@ export function retryEncryptedMutation(record: EncryptedMutationEnvelope, now: s
 function isDue(record: EncryptedMutationEnvelope, now: string) {
   return record.state === "PENDING" && (!record.nextAttemptAt || record.nextAttemptAt <= now);
 }
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+/** Dependencies are encrypted business intent. Existing commands declare none. */
+function dependencyIds(payload: JsonValue) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) || !("dependencies" in payload)) return [];
+  const value = payload.dependencies;
+  if (!Array.isArray(value)) throw new Error("Invalid mutation dependencies.");
+  const ids = value.filter(isUuid);
+  if (ids.length !== value.length || new Set(ids).size !== ids.length) throw new Error("Invalid mutation dependencies.");
+  return ids;
+}
 async function encryptedConflict(identity: MutationVaultIdentity, record: EncryptedMutationEnvelope, reasonCode: string, detectedAt: string, context: JsonValue | undefined): Promise<EncryptedMutationConflict> {
   const encrypted = context === undefined ? null : await encryptVaultValue(identity.vaultKey, encoder.encode(JSON.stringify(context)), encryptedConflictContext(record));
   return { operationId: record.operationId, userId: record.userId, deviceId: record.deviceId, mutationType: record.mutationType, schemaVersion: record.schemaVersion, state: "CONFLICT", reasonCode: nonEmpty(reasonCode, "reasonCode"), detectedAt, ciphertext: encrypted?.ciphertext ?? null, iv: encrypted?.iv ?? null };
@@ -181,8 +194,60 @@ export class EncryptedMutationSyncEngine {
       return result;
     }
     const pending = (await this.store.listEncryptedMutations(identity.userId, identity.deviceId)).filter((record) => isDue(record, now)).sort(compareEncryptedMutationEnvelopes);
-    for (const record of pending) await this.process(identity, record, result);
+    const remaining = new Map(pending.map((record) => [record.operationId, record]));
+    while (remaining.size) {
+      let progressed = false;
+      for (const [operationId, record] of [...remaining]) {
+        const resolution = await this.resolveDependencies(identity, record);
+        if (resolution === "WAITING") continue;
+        if (resolution === "CONFLICT") {
+          await this.store.updateEncryptedMutation(transition(record, "CONFLICT", now, { statusCode: "DEPENDENCY_NOT_APPLIED" }));
+          result.conflicted += 1;
+        } else if (resolution === "REJECTED") {
+          await this.store.updateEncryptedMutation(transition(record, "REJECTED", now, { statusCode: "INVALID_DEPENDENCY" }));
+          result.rejected += 1;
+        } else {
+          await this.process(identity, record, result);
+        }
+        remaining.delete(operationId);
+        progressed = true;
+      }
+      if (!progressed) break;
+    }
     return result;
+  }
+
+  private async resolveDependencies(identity: MutationVaultIdentity, record: EncryptedMutationEnvelope): Promise<DependencyResolution> {
+    let dependencies: string[];
+    try { dependencies = dependencyIds(await decryptEncryptedMutationPayload(identity, record)); } catch { return "REJECTED"; }
+    if (dependencies.length === 0) return "READY";
+    if (dependencies.includes(record.operationId)) return "REJECTED";
+    const records = await this.store.listEncryptedMutations(identity.userId, identity.deviceId);
+    const byId = new Map(records.map((item) => [item.operationId, item]));
+    const visits = new Set<string>();
+    const visiting = new Set<string>();
+    const visitsCycle = async (operationId: string): Promise<boolean> => {
+      if (visiting.has(operationId)) return true;
+      if (visits.has(operationId)) return false;
+      const target = byId.get(operationId);
+      if (!target) return false;
+      visits.add(operationId); visiting.add(operationId);
+      try {
+        for (const dependency of dependencyIds(await decryptEncryptedMutationPayload(identity, target))) {
+          if (await visitsCycle(dependency)) return true;
+        }
+      } catch { return false; }
+      finally { visiting.delete(operationId); }
+      return false;
+    };
+    if (await visitsCycle(record.operationId)) return "REJECTED";
+    for (const dependency of dependencies) {
+      const target = byId.get(dependency);
+      if (!target) return "REJECTED";
+      if (target.state === "CONFLICT" || target.state === "REJECTED") return "CONFLICT";
+      if (target.state !== "APPLIED") return "WAITING";
+    }
+    return "READY";
   }
 
   private async process(identity: MutationVaultIdentity, record: EncryptedMutationEnvelope, result: MutationSyncResult) {

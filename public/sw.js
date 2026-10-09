@@ -1,8 +1,8 @@
 const CACHE_PREFIX = "timmers-gadget-shell-";
-const CACHE_NAME = `${CACHE_PREFIX}v6`;
+const CACHE_NAME = `${CACHE_PREFIX}v7`;
 const OFFLINE_FALLBACK = "/offline";
-const LOCAL_OFFLINE_ROUTES = ["/offline", "/offline/unlock", "/offline/workspace", "/offline/catalogue", "/offline/inventory", "/offline/customers", "/offline/suppliers", "/offline/purchases"];
-const NORMAL_ROUTE_OFFLINE_FALLBACKS = { "/app/catalogue": "/offline/catalogue", "/app/inventory": "/offline/inventory", "/app/suppliers": "/offline/suppliers", "/app/purchases": "/offline/purchases" };
+const LOCAL_OFFLINE_ROUTES = ["/offline", "/offline/unlock", "/offline/workspace", "/offline/catalogue", "/offline/inventory", "/offline/customers", "/offline/suppliers", "/offline/purchases", "/offline/sales"];
+const NORMAL_ROUTE_OFFLINE_FALLBACKS = { "/app/catalogue": "/offline/catalogue", "/app/inventory": "/offline/inventory", "/app/suppliers": "/offline/suppliers", "/app/purchases": "/offline/purchases", "/app/sales/new": "/offline/sales" };
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(LOCAL_OFFLINE_ROUTES)));

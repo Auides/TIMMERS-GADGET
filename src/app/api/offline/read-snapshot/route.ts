@@ -29,7 +29,9 @@ function catalogueRecord(row: Record<string, unknown>): OfflineCatalogueRecord {
     productId: requiredString(row.product_id), productName: requiredString(row.product_name), productSku: requiredString(row.product_sku), productBarcode: nullableString(row.product_barcode),
     brandName: nullableString(row.brand_name), categoryName: nullableString(row.category_name), serialized: false,
     variantId: nullableString(row.variant_id), variantLabel: nullableString(row.variant_label), variantSku: nullableString(row.variant_sku), variantBarcode: nullableString(row.variant_barcode),
-    condition: requiredString(row.condition), quantity: numberValue(row.quantity) as number, sellingPrice: numberValue(row.selling_price) as number,
+    condition: requiredString(row.condition), quantity: numberValue(row.quantity) as number,
+    cataloguePriceId: requiredString(row.catalogue_price_id), priceRevision: numberValue(row.price_revision) as number,
+    sellingPrice: numberValue(row.selling_price) as number,
   };
 }
 
@@ -62,7 +64,7 @@ export async function GET() {
 
   try {
     const [catalogueResult, serializedResult, customerResult, supplierResult] = await Promise.all([
-      supabase.rpc("staff_catalog_lookup", { p_search: null }),
+      supabase.rpc("staff_offline_catalogue_snapshot"),
       supabase.rpc("staff_serialized_inventory_snapshot"),
       supabase.rpc("staff_customer_reference_snapshot_v2"),
       profile.role === "MANAGER"

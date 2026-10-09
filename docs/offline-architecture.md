@@ -277,3 +277,23 @@ reporting, or encrypted read snapshots before confirmation.
 `INVENTORY_ADJUSTMENT_REQUEST_CREATE` is the sixth and only new encrypted V4 command. It is available only to an unlocked active STAFF or MANAGER vault and creates a pending `inventory_adjustment_requests` row after reconnection. The same normal offline Inventory view uses only its existing encrypted snapshot to compose either a signed non-serialized request (product, optional variant, condition, quantity, reason) or a serialized one-unit-out request. It never uses the legacy outbox or service worker for replay.
 
 The command is request creation, not inventory execution: it cannot alter stock buckets, WAC, costs, revisions, movements, effects, serialized units, approval, or rejection. Pending UI is explicitly labelled **Pending request — not yet synced; no stock change.** Admin remains offline-excluded. Opening stock, direct adjustments, approval/rejection, and Admin execution remain online-only. Phase 7A-C repairs the positive non-serialized request execution control without making it offline-capable.
+## Phase 7B-B: provisional offline cash checkout
+
+`SALE_CHECKOUT` is the seventh approved encrypted mutation. It is deliberately
+smaller than online checkout: only Staff and Manager may create an ordinary,
+fully-paid, nonserialized, single-CASH-payment intent while disconnected.
+Admin remains offline-ineligible. A local sale is never an authoritative stock
+deduction, completed sale, or server sale number.
+
+The normal POS route has an offline-safe fallback and `/offline/sales` provides
+the cached shell route. Both show **Local pending sale** and **Awaiting
+synchronization** until replay succeeds. The only local reference is
+`OFFLINE-<operation-id-prefix>`; it is not globally sequential. A provisional
+receipt may show cached quoted items, tendered cash, business date, and pending
+synchronization wording, but never server confirmation, an authoritative sale
+number, or global stock confirmation.
+
+Discounts, credit, returns, reversals/refunds, serialized checkout, split
+payments, POS, bank transfer, other payment methods, and external payment
+verification remain online-only. Phase 7B-C is reserved for a separately
+reviewed serialized checkout boundary.

@@ -33,8 +33,8 @@ async function queued(store = new MemoryStore(), currentIdentity?: Awaited<Retur
   return { store, currentIdentity: unlockedIdentity, record };
 }
 
-test("SUPPLIER_UPDATE remains fourth in the six-command registered set", () => {
-  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST_CREATE"]);
+test("SUPPLIER_UPDATE remains fourth in the seven-command registered set", () => {
+  assert.deepEqual([...registeredOfflineMutationExecutors.keys()], ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST_CREATE", "SALE_CHECKOUT"]);
   const provider = readFileSync(new URL("../src/lib/offline/offline-auth-provider.tsx", import.meta.url), "utf8");
   const fallback = readFileSync(new URL("../src/app/offline/offline-normal-read.tsx", import.meta.url), "utf8");
   assert.match(provider, /assertSupplierCreateEligible\(unlocked\.role\)/);

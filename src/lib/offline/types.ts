@@ -146,6 +146,9 @@ export type OfflineCatalogueRecord = {
   variantBarcode: string | null;
   condition: string;
   quantity: number;
+  /** Safe quote identity/version. It never conveys inventory valuation or cost. */
+  cataloguePriceId: string;
+  priceRevision: number;
   sellingPrice: number;
 };
 
