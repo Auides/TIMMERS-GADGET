@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:catalogue-price": "node --test tests/catalogue-price-payload.test.ts",
+    "test:catalogue-price": "node --test tests/catalogue-price-payload.test.ts tests/variant-inventory-checkout-alignment.test.ts",
     "test:inventory": "node --test tests/inventory-ui.test.ts tests/inventory-overview.test.ts tests/inventory-server-actions.test.ts",
     "test:sales": "node --test tests/sales-checkout-payload.test.ts",
     "test:offline": "node --test tests/offline-foundation.test.ts tests/offline-security.test.ts tests/staff-serialized-snapshot-boundary.test.ts tests/offline-business-cache.test.ts tests/offline-normal-fallback.test.ts tests/offline-reference-data.test.ts tests/offline-mutation-transport.test.ts tests/offline-customer-create.test.ts tests/offline-customer-update.test.ts tests/offline-supplier-create.test.ts tests/offline-supplier-update.test.ts tests/offline-purchase-receive.test.ts tests/offline-inventory-adjustment-request.test.ts tests/offline-adjustment-request-reconciliation.test.ts tests/offline-sale-checkout.test.ts",

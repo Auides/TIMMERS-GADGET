@@ -70,12 +70,11 @@ export async function searchSerializedUnitsForSale(query: string): Promise<Seria
     const context = await salesContext();
     if (!context) return { status: "error", message: "Access denied. Sign in again and retry.", units: [] };
 
-    const { data, error } = await context.supabase.rpc("staff_serialized_lookup", { search_text: search });
+    const { data, error } = await context.supabase.rpc("staff_sellable_serialized_lookup", { p_search: search });
     if (error) return { status: "error", message: "Serialized search failed. Check your connection and try again.", units: [] };
 
     const deduped = new Map<string, SerializedSaleUnit>();
     for (const row of data ?? []) {
-      if (row.status !== "AVAILABLE") continue;
       if (!deduped.has(row.unit_id)) {
         deduped.set(row.unit_id, {
           unitId: row.unit_id,

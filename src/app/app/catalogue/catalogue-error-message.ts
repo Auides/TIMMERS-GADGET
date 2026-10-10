@@ -21,6 +21,12 @@ export function safeCatalogueMutationMessage(message: string, code?: string) {
   if (normalized.includes("active variant requires an active parent product") || normalized.includes("active variant requires active parent product")) {
     return "Variants cannot be activated while the parent product is archived.";
   }
+  if (normalized.includes("base_price_blocks_variant_activation") || normalized.includes("deactivate product-level prices before activating variants")) {
+    return "Base-product pricing must be disabled before variant pricing can be activated.";
+  }
+  if (normalized.includes("parent_product_inactive")) return "Variants cannot be activated while the parent product is archived.";
+  if (normalized.includes("variant_price_required")) return "Configure at least one variant-specific price before activating this variant.";
+  if (normalized.includes("variant_product_mismatch")) return "The selected variant does not belong to this product.";
   if (normalized.includes("active variant price requires an active matching variant")) {
     return "Save a price inactive while the variant is inactive, then activate the variant.";
   }

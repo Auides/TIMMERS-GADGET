@@ -124,12 +124,12 @@ export async function createVariant(_: CatalogueActionState, formData: FormData)
 }
 
 export async function activateVariant(_: CatalogueActionState, formData: FormData) {
-  const value = variantSchema.extend({ id: z.string().uuid(), productId: z.string().uuid() }).safeParse(Object.fromEntries(formData));
+  const value = z.object({ id: z.string().uuid(), productId: z.string().uuid() }).safeParse(Object.fromEntries(formData));
   if (!value.success) return errorState("Check the variant details and try again.");
   return rpc(
-    "catalogue_update_variant",
-    { p_id: value.data.id, p_label: value.data.label, p_sku: value.data.sku || null, p_barcode: value.data.barcode || null, p_attributes: {}, p_active: true },
-    "Variant activated successfully.",
+    "catalogue_switch_to_variant_pricing",
+    { p_product_id: value.data.productId, p_variant_id: value.data.id },
+    "Variant pricing activated successfully. Base-product prices are now inactive.",
     value.data.productId,
   );
 }
