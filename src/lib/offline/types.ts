@@ -131,7 +131,7 @@ export type EncryptedMutationStore = {
   purgeEncryptedMutationTransport?: (userId: string, deviceId: string) => Promise<void>;
 };
 
-export type OfflineBusinessResource = "catalogue" | "inventory" | "customers" | "suppliers" | "adjustmentRequests";
+export type OfflineBusinessResource = "catalogue" | "inventory" | "sellableSerialized" | "customers" | "suppliers" | "adjustmentRequests";
 export type OfflineCatalogueRecord = {
   productId: string;
   productName: string;
@@ -172,6 +172,14 @@ export type OfflineSerializedInventoryRecord = {
   identifierValue: string;
 };
 
+/** Checkout-only projection. It is deliberately distinct from historical inventory. */
+export type OfflineSellableSerializedRecord = Omit<OfflineSerializedInventoryRecord, "sellingPrice" | "status"> & {
+  status: "AVAILABLE";
+  cataloguePriceId: string;
+  priceRevision: number;
+  sellingPrice: number;
+};
+
 /** Operational reference data only; financial, credit, purchase, and history fields are excluded. */
 export type OfflineCustomerRecord = { customerId: string; fullName: string; phone: string | null; email: string | null; customerVersion: string };
 export type OfflineSupplierRecord = { supplierId: string; businessName: string; contactName: string | null; phone: string | null; email: string | null; active: boolean; /** Server-managed optimistic-concurrency token. */ supplierVersion: string };
@@ -182,6 +190,8 @@ export type OfflineReadSnapshot = {
   capturedAt: string;
   catalogue: OfflineCatalogueRecord[];
   serializedInventory: OfflineSerializedInventoryRecord[];
+  /** Narrow, quote-bound AVAILABLE-unit cache for provisional checkout only. */
+  sellableSerialized?: OfflineSellableSerializedRecord[];
   customers: OfflineCustomerRecord[];
   /** Always empty for STAFF; the server decides whether a manager may receive it. */
   suppliers: OfflineSupplierRecord[];

@@ -10,7 +10,7 @@ const userId = "11111111-1111-4111-8111-111111111111";
 const deviceId = "22222222-2222-4222-8222-222222222222";
 let sequence = 0;
 const nextId = () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`;
-const payload = () => ({ schemaVersion: 1 as const, businessDate: "2026-10-09", customerId: null, notes: null, dependencies: [], lines: [{ productId: "33333333-3333-4333-8333-333333333333", variantId: null, condition: "NEW" as const, quantity: 2, quote: { cataloguePriceId: "44444444-4444-4444-8444-444444444444", priceRevision: 3, quotedSellingPrice: "1250.50" } }], payment: { method: "CASH" as const, amount: "2501.00" } });
+const payload = () => ({ schemaVersion: 1 as const, businessDate: "2026-10-09", customerId: null, notes: null, dependencies: [], lines: [{ productId: "33333333-3333-4333-8333-333333333333", variantId: null, condition: "NEW" as const, quantity: 2, serializedUnitIds: [], quote: { cataloguePriceId: "44444444-4444-4444-8444-444444444444", priceRevision: 3, quotedSellingPrice: "1250.50" } }], payment: { method: "CASH" as const, amount: "2501.00" } });
 
 class MemoryStore implements EncryptedMutationStore {
   records = new Map<string, EncryptedMutationEnvelope>(); conflicts = new Map<string, EncryptedMutationConflict>();
@@ -32,7 +32,7 @@ test("SALE_CHECKOUT is exactly the seventh registered offline command", () => {
   assert.deepEqual(types, ["CUSTOMER_CREATE", "CUSTOMER_UPDATE", "SUPPLIER_CREATE", "SUPPLIER_UPDATE", "PURCHASE_RECEIVE", "INVENTORY_ADJUSTMENT_REQUEST_CREATE", "SALE_CHECKOUT"]);
 });
 
-test("strict encrypted payload accepts only a cash-only nonserialized quote intent", () => {
+test("strict encrypted payload supports exact unit IDs while retaining cash-only checkout", () => {
   assert.deepEqual(createOfflineSaleCheckoutPayload(payload()), payload());
   assert.doesNotThrow(() => assertOfflineSaleCheckoutEligible("STAFF"));
   assert.doesNotThrow(() => assertOfflineSaleCheckoutEligible("MANAGER"));
@@ -43,8 +43,20 @@ test("strict encrypted payload accepts only a cash-only nonserialized quote inte
     { ...payload(), discount: "1.00" },
     { ...payload(), creditRequestId: nextId() },
     { ...payload(), lines: [{ ...payload().lines[0], serializedUnitIds: [nextId()] }] },
+    { ...payload(), lines: [{ ...payload().lines[0], quantity: 1, serializedUnitIds: [nextId(), nextId()] }] },
+    { ...payload(), lines: [{ ...payload().lines[0], quantity: 2, serializedUnitIds: [nextId(), nextId()] }, { ...payload().lines[0], productId: nextId(), quantity: 1, serializedUnitIds: [nextId()] }] },
     { ...payload(), dependencies: ["55555555-5555-4555-8555-555555555555", "55555555-5555-4555-8555-555555555555"] },
   ]) assert.throws(() => parseOfflineSaleCheckoutPayload(unsafe as JsonValue));
+});
+
+test("serialized unit IDs are canonical, encrypted, and locally reserved only while nonterminal", async () => {
+  const first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const serialized = createOfflineSaleCheckoutPayload({ ...payload(), payment: { method: "CASH", amount: "1250.50" }, lines: [{ ...payload().lines[0], quantity: 1, serializedUnitIds: [second], quote: { ...payload().lines[0].quote, quotedSellingPrice: "1250.50" } }] });
+  assert.deepEqual(serialized.lines[0].serializedUnitIds, [second]);
+  assert.throws(() => parseOfflineSaleCheckoutPayload({ ...serialized, lines: [{ ...serialized.lines[0], serializedUnitIds: [first, first], quantity: 2 }] } as unknown as JsonValue));
+  const current = await identity(); const record = await createEncryptedMutationEnvelope(current, { mutationType: "SALE_CHECKOUT", payload: serialized }, { createId: nextId });
+  assert.doesNotMatch(JSON.stringify(record), new RegExp(second));
 });
 
 test("sale intent is AES-GCM ciphertext scoped to the vault user/device and contains no cost", async () => {
@@ -111,6 +123,9 @@ test("source-only migration enforces exact quote, replay-first reservation, and 
   assert.match(migration, /public\.sales_finalize_checkout\(/);
   assert.doesNotMatch(migration, /insert into public\.(sales|sale_lines|sale_payments|stock_buckets|inventory_movements)/i);
   assert.match(route, /\["STAFF", "MANAGER"\]/); assert.match(route, /z\.literal\("CASH"\)/);
-  assert.doesNotMatch(route, /WAC|acquisition.?cost|serializedUnitIds/i);
+  assert.doesNotMatch(route, /WAC|acquisition.?cost/i);
+  assert.match(route, /serializedUnitIds/);
   assert.match(ui, /Local pending sale/); assert.match(ui, /Awaiting synchronization/); assert.match(ui, /OFFLINE-/); assert.doesNotMatch(ui, /server-confirmed sale/i);
+  const serializedMigration = readFileSync(new URL("../supabase/migrations/20261012110000_phase7bc_serialized_provisional_offline_checkout.sql", import.meta.url), "utf8");
+  assert.match(serializedMigration, /staff_offline_sellable_serialized_snapshot/); assert.match(serializedMigration, /catalogue_price_id uuid, price_revision bigint, selling_price numeric/); assert.match(serializedMigration, /DUPLICATE_SERIALIZED_UNIT/); assert.match(serializedMigration, /v_reservation\.completed_at is not null then return v_reservation\.result/); assert.match(serializedMigration, /public\.sales_finalize_checkout/); assert.doesNotMatch(serializedMigration, /acquisition_cost|weighted_average_cost|insert into public\.(sales|sale_lines|sale_payments|inventory_movements)/i);
 });

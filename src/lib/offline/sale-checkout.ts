@@ -3,7 +3,7 @@ import { decryptEncryptedMutationPayload } from "./mutation-transport.ts";
 import type { EncryptedMutationEnvelope, EncryptedMutationStore, JsonValue } from "./types.ts";
 
 export type OfflineSaleQuote = { cataloguePriceId: string; priceRevision: number; quotedSellingPrice: string };
-export type OfflineSaleCheckoutLine = { productId: string; variantId: string | null; condition: "NEW" | "USED" | "REFURBISHED"; quantity: number; quote: OfflineSaleQuote };
+export type OfflineSaleCheckoutLine = { productId: string; variantId: string | null; condition: "NEW" | "USED" | "REFURBISHED"; quantity: number; serializedUnitIds: string[]; quote: OfflineSaleQuote };
 export type OfflineSaleCheckoutPayload = {
   schemaVersion: 1;
   businessDate: string;
@@ -21,7 +21,7 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const decimalPattern = /^(0|[1-9]\d{0,11})\.(\d{2})$/;
 const payloadKeys = new Set(["schemaVersion", "businessDate", "customerId", "notes", "lines", "payment", "dependencies"]);
-const lineKeys = new Set(["productId", "variantId", "condition", "quantity", "quote"]);
+const lineKeys = new Set(["productId", "variantId", "condition", "quantity", "serializedUnitIds", "quote"]);
 const quoteKeys = new Set(["cataloguePriceId", "priceRevision", "quotedSellingPrice"]);
 const paymentKeys = new Set(["method", "amount"]);
 
@@ -60,11 +60,16 @@ function line(value: unknown): OfflineSaleCheckoutLine {
   const condition = typeof input.condition === "string" ? input.condition.trim().toUpperCase() : "";
   if (!( ["NEW", "USED", "REFURBISHED"] as const).includes(condition as "NEW" | "USED" | "REFURBISHED")) throw new Error("Inventory condition is invalid.");
   if (typeof input.quantity !== "number" || !Number.isSafeInteger(input.quantity) || input.quantity <= 0) throw new Error("Sale quantity must be a positive integer.");
+  if (!Array.isArray(input.serializedUnitIds)) throw new Error("Serialized unit IDs are required, even when empty.");
+  const serializedUnitIds = input.serializedUnitIds.map((unitId) => uuid(unitId, "serializedUnitIds"));
+  if (new Set(serializedUnitIds).size !== serializedUnitIds.length) throw new Error("Duplicate serialized units are not supported.");
+  if (serializedUnitIds.length !== 0 && serializedUnitIds.length !== input.quantity) throw new Error("Serialized unit count must equal line quantity.");
   return {
     productId: uuid(input.productId, "productId"),
     variantId: input.variantId === null || input.variantId === undefined ? null : uuid(input.variantId, "variantId"),
     condition: condition as OfflineSaleCheckoutLine["condition"],
     quantity: input.quantity,
+    serializedUnitIds: serializedUnitIds.sort(),
     quote: quote(input.quote),
   };
 }
@@ -88,6 +93,8 @@ export function parseOfflineSaleCheckoutPayload(value: JsonValue): OfflineSaleCh
   if (!Array.isArray(input.dependencies)) throw new Error("Sale dependencies are required.");
   const lines = input.lines.map(line).sort((left, right) => `${left.productId}:${left.variantId ?? ""}:${left.condition}`.localeCompare(`${right.productId}:${right.variantId ?? ""}:${right.condition}`));
   if (new Set(lines.map((item) => `${item.productId}:${item.variantId ?? ""}:${item.condition}`)).size !== lines.length) throw new Error("Duplicate offline sale lines are not supported.");
+  const unitIds = lines.flatMap((item) => item.serializedUnitIds);
+  if (new Set(unitIds).size !== unitIds.length) throw new Error("A serialized unit cannot appear more than once in an offline sale.");
   const dependencies = input.dependencies.map((dependency) => uuid(dependency, "dependency"));
   if (new Set(dependencies).size !== dependencies.length) throw new Error("Duplicate sale dependencies are not supported.");
   const parsedPayment = payment(input.payment);
@@ -113,6 +120,11 @@ export async function readPendingSaleCheckouts(store: EncryptedMutationStore, id
   const records = await store.listEncryptedMutations(identity.userId, identity.deviceId);
   const pending = records.filter((record): record is EncryptedMutationEnvelope & { state: "PENDING" | "SYNCING" } => record.mutationType === "SALE_CHECKOUT" && (record.state === "PENDING" || record.state === "SYNCING"));
   return Promise.all(pending.map(async (record) => ({ ...parseOfflineSaleCheckoutPayload(await decryptEncryptedMutationPayload(identity, record)), operationId: record.operationId, state: record.state })));
+}
+/** UI-only same-device selection guard; it never changes authoritative inventory status. */
+export async function readLocallyReservedSerializedUnitIds(store: EncryptedMutationStore, identity: MutationVaultIdentity): Promise<Set<string>> {
+  const pending = await readPendingSaleCheckouts(store, identity);
+  return new Set(pending.flatMap((sale) => sale.lines.flatMap((item) => item.serializedUnitIds)));
 }
 export async function readSaleCheckoutReviews(store: EncryptedMutationStore, identity: MutationVaultIdentity): Promise<SaleCheckoutReview[]> {
   const records = await store.listEncryptedMutations(identity.userId, identity.deviceId);

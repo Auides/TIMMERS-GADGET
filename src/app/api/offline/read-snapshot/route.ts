@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedProfile } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { OfflineCatalogueRecord, OfflineCustomerRecord, OfflineReadSnapshot, OfflineSerializedInventoryRecord, OfflineSupplierRecord } from "@/lib/offline/types";
+import type { OfflineCatalogueRecord, OfflineCustomerRecord, OfflineReadSnapshot, OfflineSellableSerializedRecord, OfflineSerializedInventoryRecord, OfflineSupplierRecord } from "@/lib/offline/types";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +44,15 @@ function serializedRecord(row: Record<string, unknown>): OfflineSerializedInvent
     identifierType: requiredString(row.identifier_type), identifierValue: requiredString(row.identifier_value),
   };
 }
+function sellableSerializedRecord(row: Record<string, unknown>): OfflineSellableSerializedRecord {
+  return {
+    unitId: requiredString(row.unit_id), productId: requiredString(row.product_id), productName: requiredString(row.product_name), productSku: requiredString(row.product_sku),
+    productBarcode: nullableString(row.product_barcode), productModel: nullableString(row.product_model), brandName: nullableString(row.brand_name), categoryName: nullableString(row.category_name),
+    variantId: nullableString(row.variant_id), variantLabel: nullableString(row.variant_label), variantSku: nullableString(row.variant_sku), variantBarcode: nullableString(row.variant_barcode),
+    condition: requiredString(row.condition), status: "AVAILABLE", cataloguePriceId: requiredString(row.catalogue_price_id), priceRevision: numberValue(row.price_revision) as number,
+    sellingPrice: numberValue(row.selling_price) as number, identifierType: requiredString(row.identifier_type), identifierValue: requiredString(row.identifier_value),
+  };
+}
 
 function customerRecord(row: Record<string, unknown>): OfflineCustomerRecord {
   return { customerId: requiredString(row.customer_id), fullName: requiredString(row.full_name), phone: nullableString(row.phone), email: nullableString(row.email), customerVersion: requiredString(row.customer_version) };
@@ -63,19 +72,21 @@ export async function GET() {
   if (!supabase) return NextResponse.json({ message: "Offline snapshot service is unavailable." }, { status: 503, headers: noStore });
 
   try {
-    const [catalogueResult, serializedResult, customerResult, supplierResult] = await Promise.all([
+    const [catalogueResult, serializedResult, sellableSerializedResult, customerResult, supplierResult] = await Promise.all([
       supabase.rpc("staff_offline_catalogue_snapshot"),
       supabase.rpc("staff_serialized_inventory_snapshot"),
+      supabase.rpc("staff_offline_sellable_serialized_snapshot"),
       supabase.rpc("staff_customer_reference_snapshot_v2"),
       profile.role === "MANAGER"
         ? supabase.rpc("manager_supplier_reference_snapshot_v2")
         : Promise.resolve({ data: [], error: null }),
     ]);
-    if (catalogueResult.error || serializedResult.error || customerResult.error || supplierResult.error) throw new Error("Read projection failed.");
+    if (catalogueResult.error || serializedResult.error || sellableSerializedResult.error || customerResult.error || supplierResult.error) throw new Error("Read projection failed.");
     const snapshot: OfflineReadSnapshot = {
       capturedAt: new Date().toISOString(),
       catalogue: (catalogueResult.data ?? []).map((row: unknown) => catalogueRecord(row as Record<string, unknown>)),
       serializedInventory: (serializedResult.data ?? []).map((row: unknown) => serializedRecord(row as Record<string, unknown>)),
+      sellableSerialized: (sellableSerializedResult.data ?? []).map((row: unknown) => sellableSerializedRecord(row as Record<string, unknown>)),
       customers: (customerResult.data ?? []).map((row: unknown) => customerRecord(row as Record<string, unknown>)),
       suppliers: (supplierResult.data ?? []).map((row: unknown) => supplierRecord(row as Record<string, unknown>)),
     };

@@ -8,7 +8,10 @@ const noStore = { "Cache-Control": "private, no-store, max-age=0" };
 const money = z.string().regex(/^(0|[1-9]\d{0,11})\.\d{2}$/);
 const optionalText = z.string().trim().transform((value) => value || null).nullable().optional().transform((value) => value ?? null);
 const quote = z.object({ cataloguePriceId: z.string().uuid(), priceRevision: z.number().int().positive(), quotedSellingPrice: money }).strict();
-const line = z.object({ productId: z.string().uuid(), variantId: z.string().uuid().nullable(), condition: z.enum(["NEW", "USED", "REFURBISHED"]), quantity: z.number().int().positive(), quote }).strict();
+const line = z.object({ productId: z.string().uuid(), variantId: z.string().uuid().nullable(), condition: z.enum(["NEW", "USED", "REFURBISHED"]), quantity: z.number().int().positive(), serializedUnitIds: z.array(z.string().uuid()), quote }).strict().superRefine((value, context) => {
+  if (value.serializedUnitIds.length !== 0 && value.serializedUnitIds.length !== value.quantity) context.addIssue({ code: z.ZodIssueCode.custom, message: "Serialized unit count must equal quantity." });
+  if (new Set(value.serializedUnitIds).size !== value.serializedUnitIds.length) context.addIssue({ code: z.ZodIssueCode.custom, message: "Duplicate serialized unit." });
+});
 const requestSchema = z.object({
   operationId: z.string().uuid(),
   idempotencyKey: z.string().uuid(),
@@ -19,7 +22,10 @@ const requestSchema = z.object({
   lines: z.array(line).min(1),
   payment: z.object({ method: z.literal("CASH"), amount: money.refine((value) => value !== "0.00") }).strict(),
   dependencies: z.array(z.string().uuid()),
-}).strict();
+}).strict().superRefine((value, context) => {
+  const unitIds = value.lines.flatMap((item) => item.serializedUnitIds);
+  if (new Set(unitIds).size !== unitIds.length) context.addIssue({ code: z.ZodIssueCode.custom, message: "Duplicate serialized unit." });
+});
 
 function response(code: string, status: number) { return NextResponse.json({ code }, { status, headers: noStore }); }
 function rpcFailure(error: { code?: string; message?: string } | null) {
@@ -49,6 +55,7 @@ export async function POST(request: Request) {
       variant_id: item.variantId,
       condition: item.condition,
       quantity: item.quantity,
+      serialized_unit_ids: [...item.serializedUnitIds].sort(),
       quote: { catalogue_price_id: item.quote.cataloguePriceId, price_revision: item.quote.priceRevision, quoted_selling_price: item.quote.quotedSellingPrice },
     })),
     p_payment: { method: "CASH", amount: parsed.data.payment.amount },

@@ -183,3 +183,9 @@ Cached quantities remain advisory. Pending sales do not decrement or rewrite
 the authoritative encrypted inventory snapshot. Global stock cannot be
 guaranteed while disconnected, so insufficient stock on replay is explicit and
 requires cashier review.
+
+The serialized historical inventory resource remains unchanged. A separate
+atomic encrypted resource contains only checkout-safe AVAILABLE serialized
+units with safe display fields plus exact catalogue price ID/revision/value.
+Pending purchase-receipt units are excluded until their authoritative receipt
+has applied and a later snapshot refresh returns a server-issued unit ID.

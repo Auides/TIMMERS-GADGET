@@ -259,3 +259,17 @@ atomic finalizer. COGS/WAC, stock changes, payment insertion, effects, audit,
 and server sale number remain server-owned. A changed quote, inactive item, or
 insufficient current stock becomes an explicit conflict without silent price or
 quantity changes.
+
+## Phase 7B-C serialized checkout extension
+
+SALE_CHECKOUT remains the seventh mutation, not a new command. Its encrypted
+line shape may carry canonically sorted serializedUnitIds; each selected ID is
+unique across the checkout and exactly matches a serialized line's quantity.
+Exact completed retries return before mutable unit validation. New requests
+retain strict price ID/revision/value validation and delegate all unit locks,
+SOLD transitions, stock effects, immutable COGS, sale/payment rows, and audit
+to sales_finalize_checkout.
+
+The local reservation projection includes only PENDING and SYNCING envelopes
+for the unlocked user/device. APPLIED, CONFLICT, and REJECTED release the
+selection. This is a UI guard, never an authoritative inventory transition.

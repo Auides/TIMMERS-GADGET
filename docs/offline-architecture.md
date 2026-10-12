@@ -295,5 +295,9 @@ number, or global stock confirmation.
 
 Discounts, credit, returns, reversals/refunds, serialized checkout, split
 payments, POS, bank transfer, other payment methods, and external payment
-verification remain online-only. Phase 7B-C is reserved for a separately
-reviewed serialized checkout boundary.
+verification remain online-only. Phase 7B-C adds a separately reviewed
+serialized checkout boundary: SALE_CHECKOUT remains seventh, accepts mixed
+serialized/nonserialized CASH-only provisional carts, and uses a distinct
+encrypted sellable-unit snapshot. Unit ID is replay authority; IMEI/serial are
+display/search only. The server retains exact quote, inventory, COGS, audit,
+and final receipt authority.

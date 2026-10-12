@@ -27,7 +27,7 @@ function makeSnapshotId() {
 }
 
 function validateSnapshot(snapshot: OfflineReadSnapshot) {
-  if (!snapshot || !Array.isArray(snapshot.catalogue) || !Array.isArray(snapshot.serializedInventory) || !Array.isArray(snapshot.customers) || !Array.isArray(snapshot.suppliers) || Number.isNaN(Date.parse(snapshot.capturedAt))) {
+  if (!snapshot || !Array.isArray(snapshot.catalogue) || !Array.isArray(snapshot.serializedInventory) || !Array.isArray(snapshot.sellableSerialized ?? []) || !Array.isArray(snapshot.customers) || !Array.isArray(snapshot.suppliers) || Number.isNaN(Date.parse(snapshot.capturedAt))) {
     throw new Error("The online inventory snapshot has an invalid shape.");
   }
 }
@@ -46,6 +46,7 @@ export async function refreshOfflineReadCache(store: OfflineBusinessCacheStore, 
   const records = await Promise.all([
     encryptedRecord(identity, "catalogue", snapshotId, snapshot.capturedAt, encryptedAt, snapshot.catalogue),
     encryptedRecord(identity, "inventory", snapshotId, snapshot.capturedAt, encryptedAt, snapshot.serializedInventory),
+    encryptedRecord(identity, "sellableSerialized", snapshotId, snapshot.capturedAt, encryptedAt, snapshot.sellableSerialized ?? []),
     encryptedRecord(identity, "customers", snapshotId, snapshot.capturedAt, encryptedAt, snapshot.customers),
     encryptedRecord(identity, "suppliers", snapshotId, snapshot.capturedAt, encryptedAt, snapshot.suppliers),
   ]);
@@ -68,12 +69,13 @@ export async function readOfflineReadCache(store: OfflineBusinessCacheStore, ide
     .map((record) => ({ ...record, vaultKey: identity.vaultKey } satisfies EncryptedRecordWithKey));
   const catalogue = matches.find((record) => record.resource === "catalogue");
   const inventory = matches.find((record) => record.resource === "inventory");
+  const sellableSerialized = matches.find((record) => record.resource === "sellableSerialized");
   const customers = matches.find((record) => record.resource === "customers");
   const suppliers = matches.find((record) => record.resource === "suppliers");
-  const records = [catalogue, inventory, customers, suppliers];
+  const records = [catalogue, inventory, sellableSerialized, customers, suppliers];
   if (records.some((record) => !record) || new Set(records.map((record) => record!.snapshotId)).size !== 1 || new Set(records.map((record) => record!.capturedAt)).size !== 1) return null;
-  const [cataloguePayload, inventoryPayload, customerPayload, supplierPayload] = await Promise.all(records.map((record) => decryptResource(record!)));
-  return { capturedAt: catalogue!.capturedAt, catalogue: cataloguePayload.records as OfflineReadSnapshot["catalogue"], serializedInventory: inventoryPayload.records as OfflineReadSnapshot["serializedInventory"], customers: customerPayload.records as OfflineReadSnapshot["customers"], suppliers: supplierPayload.records as OfflineReadSnapshot["suppliers"] };
+  const [cataloguePayload, inventoryPayload, sellablePayload, customerPayload, supplierPayload] = await Promise.all(records.map((record) => decryptResource(record!)));
+  return { capturedAt: catalogue!.capturedAt, catalogue: cataloguePayload.records as OfflineReadSnapshot["catalogue"], serializedInventory: inventoryPayload.records as OfflineReadSnapshot["serializedInventory"], sellableSerialized: sellablePayload.records as NonNullable<OfflineReadSnapshot["sellableSerialized"]>, customers: customerPayload.records as OfflineReadSnapshot["customers"], suppliers: supplierPayload.records as OfflineReadSnapshot["suppliers"] };
 }
 
 export async function fetchOfflineReadSnapshot() {

@@ -244,10 +244,17 @@ The same-origin route and hardened `SECURITY DEFINER` function independently rec
 Offline sale payloads stay in the V4 AES-GCM encrypted mutation store and are
 bound to the active user/device through AAD. They contain no WAC, acquisition
 cost, COGS, valuation, stock revision, sale number, payment credentials, or
-serialized identifier/unit data. The browser may display a cached quote but is
-not a price or stock authority.
+serialized identifier text. Serialized checkout may contain only the server
+issued unit ID, never an IMEI/serial value. The browser may display a cached
+quote but is not a price or stock authority.
 
 The replay endpoint and database function recheck authenticated active
 Staff/Manager authority. The service worker neither stores nor replays any
 sale mutation or Supabase response, and authenticated `/app` HTML is not
 cached.
+
+Serialized checkout uses a separate cost-safe cache of only AVAILABLE,
+exact-price units. Its unit IDs, identifiers, and quote fields stay inside the
+encrypted user/device vault; no identifier appears in plaintext mutation
+metadata. Acquisition cost, COGS, WAC, supplier, and procurement data are
+neither replicated nor sent by the browser.
