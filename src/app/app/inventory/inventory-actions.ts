@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { assertDistinctSerializedIdentifiers, normalizeSerializedIdentifierValue } from "@/lib/serialized-identifier-validation";
 import type { InventoryActionState } from "./inventory-state";
 import { adjustmentUnitCostRpcValue, canExecuteOrRejectAdjustment, canRecordOpeningStock, canSubmitAdjustmentRequest, parseOptionalAdjustmentUnitCost } from "./inventory-ui";
 
@@ -60,9 +61,16 @@ export async function recordOpeningStock(_: InventoryActionState, form: FormData
   const p = z.object({ productId: id, variantId: z.string().optional(), serialized: z.enum(["true", "false"]), condition: conditions, quantity: z.coerce.number().int().positive(), imei1: z.string().trim().optional(), imei2: z.string().trim().optional(), serial: z.string().trim().optional(), warrantyStart: z.string().optional(), warrantyExpiry: z.string().optional(), requestId: id.optional(), notes: z.string().optional() }).safeParse(Object.fromEntries(form));
   if (!p.success) return { status: "error", message: "Check the opening-stock details and try again." };
   const v = p.data;
-  const identifiers = [["IMEI_1", v.imei1], ["IMEI_2", v.imei2], ["SERIAL", v.serial]].filter(([, value]) => value).map(([type, value]) => ({ type, value }));
+  const identifiers = [
+    { type: "IMEI_1", value: v.imei1 },
+    { type: "IMEI_2", value: v.imei2 },
+    { type: "SERIAL", value: v.serial },
+  ].flatMap(({ type, value }) => value ? [{ type, value: normalizeSerializedIdentifierValue(value) }] : []);
   if (v.serialized === "true" && v.quantity !== 1) return { status: "error", message: "Serialized stock quantity must be exactly one." };
   if (v.serialized === "true" && identifiers.length === 0) return { status: "error", message: "Serialized stock requires at least one IMEI or serial number." };
+  if (v.serialized === "true") {
+    try { assertDistinctSerializedIdentifiers(identifiers); } catch { return { status: "error", message: "Each IMEI or serial number can be used only once for this physical unit." }; }
+  }
   if (v.warrantyStart && v.warrantyExpiry && v.warrantyExpiry < v.warrantyStart) return { status: "error", message: "Invalid warranty dates." };
   const line = { product_id: v.productId, variant_id: v.variantId || null, condition: v.condition, quantity: v.quantity, acquisition_cost: cost, warranty_start: v.warrantyStart || null, warranty_expiry: v.warrantyExpiry || null, identifiers };
   return call("inventory_record_opening_stock", { p_request_id: v.requestId ?? crypto.randomUUID(), p_notes: v.notes?.trim() || null, p_lines: [line] }, "Opening stock recorded. Inventory without an active matching selling price is not currently priced for sale.", "opening-stock");

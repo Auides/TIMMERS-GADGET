@@ -1,6 +1,7 @@
 import type { MutationExecutionOutcome, MutationExecutor, MutationVaultIdentity } from "./mutation-transport.ts";
 import { decryptEncryptedMutationPayload } from "./mutation-transport.ts";
 import type { EncryptedMutationEnvelope, EncryptedMutationStore, JsonValue } from "./types.ts";
+import { assertDistinctSerializedIdentifiers, assertUniqueSerializedIdentifierValues, normalizeSerializedIdentifierValue } from "../serialized-identifier-validation.ts";
 
 /** These values deliberately mirror the established database enum and add no new identifier kind. */
 export const purchaseReceiveIdentifierTypes = ["IMEI_1", "IMEI_2", "SERIAL"] as const;
@@ -114,7 +115,7 @@ function identifier(value: unknown): SerializedPurchaseIdentifier {
   rejectUnknownKeys(input, identifierKeys, "Serialized identifier");
   const type = requiredText(input.type, "Identifier type").toUpperCase();
   if (!(purchaseReceiveIdentifierTypes as readonly string[]).includes(type)) throw new Error("Unsupported serialized identifier type.");
-  const identifierValue = requiredText(input.value, "Identifier value");
+  const identifierValue = normalizeSerializedIdentifierValue(requiredText(input.value, "Identifier value"));
   if ((type === "IMEI_1" || type === "IMEI_2") && !/^\d{14,16}$/.test(identifierValue)) throw new Error("IMEI identifiers must contain 14 to 16 digits.");
   return { type: type as PurchaseReceiveIdentifierType, value: identifierValue };
 }
@@ -126,7 +127,9 @@ function serializedUnit(value: unknown): SerializedPurchaseUnit {
   const warrantyExpiry = optionalDate(input.warrantyExpiry, "Warranty expiry");
   if (warrantyStart && warrantyExpiry && warrantyExpiry < warrantyStart) throw new Error("Warranty expiry cannot be earlier than warranty start.");
   if (!Array.isArray(input.identifiers) || input.identifiers.length === 0) throw new Error("Every serialized purchase unit requires an identifier.");
-  return { acquisitionCostDecimal: canonicalDecimal(input.acquisitionCostDecimal), warrantyStart, warrantyExpiry, identifiers: input.identifiers.map(identifier) };
+  const identifiers = input.identifiers.map(identifier);
+  assertDistinctSerializedIdentifiers(identifiers);
+  return { acquisitionCostDecimal: canonicalDecimal(input.acquisitionCostDecimal), warrantyStart, warrantyExpiry, identifiers };
 }
 function line(value: unknown): PurchaseReceiveLine {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Every purchase receipt line must be an object.");
@@ -156,12 +159,14 @@ export function parsePurchaseReceivePayload(value: JsonValue): PurchaseReceivePa
   rejectUnknownKeys(input, allowed, "Purchase receipt");
   if (!Array.isArray(input.lines) || input.lines.length === 0) throw new Error("At least one purchase line is required.");
   if (!Array.isArray(input.initialPayments)) throw new Error("Initial payments must be an array.");
+  const lines = input.lines.map(line);
+  assertUniqueSerializedIdentifierValues(lines.flatMap((receiptLine) => receiptLine.serializedUnits.flatMap((unit) => unit.identifiers)));
   return {
     supplierId: uuid(input.supplierId, "supplierId"),
     receivedOn: receivedOn(input.receivedOn),
     supplierReference: optionalText(input.supplierReference),
     notes: optionalText(input.notes),
-    lines: input.lines.map(line),
+    lines,
     initialPayments: input.initialPayments.map(initialPayment),
   };
 }
