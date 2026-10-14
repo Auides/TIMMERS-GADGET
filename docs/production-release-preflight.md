@@ -2,9 +2,9 @@
 
 ## Release identity
 
-| Item | Required value | Status on 2026-10-13 |
+| Item | Required value | Status on 2026-10-14 |
 | --- | --- | --- |
-| Application commit | `f3d6ee1a8caa43fdb9d8a80ac83bf16af9e273bf` | verified locally |
+| Application commit | `a29126d49cc6371d2bd58956ccf6ad485c747a17` | verified locally; grouped serialized lookup repair |
 | Branch | `recovery/offline-v2` | verified locally |
 | Supabase project ref | `wugmcqtyiknqobjqwhno` | release-day verification required |
 | Worker | `timmers-gadget` | source configuration verified |
@@ -14,11 +14,11 @@ This document is a preparation artifact, not permission to migrate or deploy. Th
 
 ## Validated local baseline
 
-The release candidate completed the local quality gate with **155 project tests** and **111 offline tests** passing. `npm run lint`, `npm run build`, `npm run build:vinext`, and `git diff --check` also passed. The offline mutation registry remains exactly seven commands. These are local-source results, not production evidence.
+The release candidate completed the local quality gate with **159 project tests** and **111 offline tests** passing. `npm run lint`, `npm run build`, `npm run build:vinext`, and `git diff --check` also passed. The offline mutation registry remains exactly seven commands. These are local-source results, not production evidence.
 
 ## Pending migration order and source dependency audit
 
-The repository contains the following 15 source-only migrations after the existing sales baseline. Apply them only in this exact filename order. A later `CREATE OR REPLACE` is an intentional replacement, not a reason to omit its predecessor.
+The repository contains the following 16 source-only migrations after the existing sales baseline. Apply them only in this exact filename order. A later `CREATE OR REPLACE` is an intentional replacement, not a reason to omit its predecessor.
 
 | # | Migration | Objects / dependencies | Replacement / security | Verdict |
 | ---: | --- | --- | --- | --- |
@@ -36,13 +36,16 @@ The repository contains the following 15 source-only migrations after the existi
 | 12 | `20261009080116_phase7bb_provisional_offline_cash_checkout.sql` | `catalogue_prices.quote_revision`, quote trigger, catalogue snapshot, sale reservation table, initial cash checkout RPC | depends on the Phase 7 finalizer and sales/inventory effect model; price revision is checked server-side; RLS/revoke/grant | SAFE; checkout RPC intentionally replaced by #14 |
 | 13 | `20261010140321_phase7_variant_inventory_checkout_alignment.sql` | variant-target assertion/trigger guards, variant-pricing switch, safe serialized lookup and legacy-inventory report | depends on products, variants, prices, buckets, serialized units, opening-stock and purchase items; hardened SECURITY DEFINER paths | SAFE; existing invalid legacy rows are not rewritten |
 | 14 | `20261012110000_phase7bc_serialized_provisional_offline_checkout.sql` | safe sellable-serialized snapshot and final `offline_sales_checkout` replacement | requires #12 reservation/quote model, #13 variant rules, and Phase 7 checkout finalizer; handles mixed carts atomically | SAFE — final checkout RPC |
-| 15 | `20261013123309_phase7bd_serialized_unit_integrity_preflight.sql` | Manager/Admin-gated serialized-unit integrity report | source-only, unapplied, read-only diagnostic; no automatic cleanup or merge | WARNING — production compatibility is unknown until the preflight runs |
+| 15 | `20261013123309_phase7bd_serialized_unit_integrity_preflight.sql` | Manager/Admin-gated serialized-unit integrity report | source-only, unapplied, read-only diagnostic; no automatic cleanup or merge | SAFE preflight evidence; persisted report remains unapplied |
+| 16 | `20261013213939_phase7be_grouped_serialized_unit_lookups.sql` | versioned grouped generic/sellable lookup and both serialized snapshot projections | source-only, unapplied; hardened SECURITY DEFINER `pg_catalog, pg_temp`; authenticated-only grants; preserves v1 signatures for migration-first compatibility | SAFE source repair; production application rollout must use v2 callers |
 
-Static source result: filename chronology is safe; no later migration is required before an earlier one executes. All new operation tables are RLS-enabled and direct browser table access is revoked. Newer SECURITY DEFINER functions explicitly use `pg_catalog, pg_temp`, authenticate/authorize within the function, and revoke default PUBLIC/anon access before granting `authenticated` where appropriate. The two early, read-only snapshot functions are explicit but use `public, pg_temp`; do not rewrite applied migration history during this release.
+Static source result: filename chronology is safe; no later migration is required before an earlier one executes. All new operation tables are RLS-enabled and direct browser table access is revoked. Newer SECURITY DEFINER functions explicitly use `pg_catalog, pg_temp`, authenticate/authorize within the function, and revoke default PUBLIC/anon access before granting `authenticated` where appropriate. Migration #16 uses versioned grouped read projections rather than rewriting incumbent RPC signatures. The two early, read-only snapshot functions are explicit but use `public, pg_temp`; do not rewrite applied migration history during this release.
 
 ## Serialized-unit source finding and release preflight
 
-Current authoritative source behavior is one physical serialized unit with many identifiers attached to that same unit: `U1` may have one IMEI1, one IMEI2, and one serial. The authoritative opening-stock and purchase-receipt SQL inserts the unit once, then loops over identifiers for that unit; it does not intentionally create one physical unit per identifier. This source finding does **not** prove that production contains no duplicate physical units.
+Current authoritative source behavior is one physical serialized unit with many identifiers attached to that same unit: `U1` may have one IMEI1, one IMEI2, and one serial. The authoritative opening-stock and purchase-receipt SQL inserts the unit once, then loops over identifiers for that unit; it does not intentionally create one physical unit per identifier.
+
+The approved production read-only preflight confirmed **10 physical serialized units** and **18 identifier rows**: 3 units have 1 identifier, 6 have 2 identifiers, and 1 has 3 identifiers. The observed repeated lookup results are therefore **lookup-cardinality presentation defects, not duplicate physical-unit data**. Migration #16 creates grouped v2 read projections that return one unit record with an ordered nested `identifiers` collection before any generic-lookup limit is applied.
 
 The release candidate adds normalized identifier validation, per-unit identifier-type uniqueness, per-unit identifier-value uniqueness, receipt-wide normalized identifier-value uniqueness, and earlier safe rejection in opening stock and offline `PURCHASE_RECEIVE`. It adds no business mutation or automatic cleanup.
 
@@ -57,11 +60,15 @@ The release candidate adds normalized identifier validation, per-unit identifier
 
 Classify zero findings as **SAFE**, investigable ambiguity as **WARNING**, and duplicate/inconsistent data that can invalidate an invariant or guard as **BLOCKER**. Do not merge or delete any row automatically; cleanup needs separate explicit approval.
 
-Migration #15 persists a restricted, read-only integrity report for post-application verification; it is not a business mutation and performs no cleanup. It cannot substitute for the required pre-migration source-equivalent query because the function does not exist in production until #15 is applied, and the pre-migration review must include every condition above. If the approved read-only preflight cannot be run, the release is **NO-GO**.
+Migration #15 persists a restricted, read-only integrity report for post-application verification; it is not a business mutation and performs no cleanup. It cannot substitute for the required pre-migration source-equivalent query because the function does not exist in production until #15 is applied. The approved pre-migration review has now run with the recorded zero-count results below.
+
+### Confirmed production integrity preflight results
+
+All of the following approved read-only checks returned **0**: duplicate opening-stock groups; units without identifiers; purchase overage; ambiguous origins; active variant plus active base price; variant-less stock buckets in variant mode; variant-less serialized units in variant mode; variant/product mismatches; available units on inactive products; available units on inactive variants; active prices on inactive variants; stock-bucket variant mismatch; active prices on inactive products; active variants without active price; unsupported roles; active profiles without auth users; negative stock buckets; serialized units on nonserialized products; and orphaned catalogue prices.
 
 ## Data compatibility — release-day, read-only only
 
-No production data was read during preparation. Therefore every data finding is **UNKNOWN**, not proof of health or corruption. Before applying migrations, an authorized operator must run the following in a read-only SQL session against **only** `wugmcqtyiknqobjqwhno`. Keep any row-level output private; record counts and opaque IDs only in the release record.
+The initial preparation did not read production data. The subsequently approved read-only preflight produced the zero-count results recorded above and the 10-unit/18-identifier distribution. Before applying migrations, an authorized operator must preserve that evidence or rerun the following in a read-only SQL session against **only** `wugmcqtyiknqobjqwhno`. Keep any row-level output private; record counts and opaque IDs only in the release record.
 
 ```sql
 begin read only;
@@ -149,7 +156,7 @@ Preparation could not authenticate the read-only Supabase CLI: the attempt to li
 npx supabase migration list --linked --project-ref wugmcqtyiknqobjqwhno
 ```
 
-Capture the project identity and compare remote history to the repository sequence. It must prove that the historical baseline is present, none of the 15 pending migrations were unexpectedly applied, and there are no remote-only migrations or gaps. If the command would relink the repository, stop; do not use it. An authenticated operator may instead use the Supabase dashboard's migration-history view for the same project.
+Capture the project identity and compare remote history to the repository sequence. It must prove that the historical baseline is present, none of the 16 pending migrations were unexpectedly applied, and there are no remote-only migrations or gaps. If the command would relink the repository, stop; do not use it. An authenticated operator may instead use the Supabase dashboard's migration-history view for the same project.
 
 ## Security and offline-boundary verdict
 
@@ -180,7 +187,7 @@ For application rollback, record the current Worker version ID before deployment
 
 ## Release manifest
 
-Delivered: encrypted offline foundation and vault/session security; encrypted catalogue/inventory cache; customer/supplier offline references; encrypted mutation transport; customer create/update; manager supplier create/update; purchase receiving (including serialized receiving and initial payments); adjustment requests/status reconciliation; provisional nonserialized CASH checkout; variant-priority catalogue/inventory model; serialized opening-stock/IMEI model; sellable serialized checkout boundary; serialized and mixed provisional offline CASH checkout; serialized identifier input hardening; the one-physical-unit/multiple-identifiers invariant; early duplicate normalized identifier rejection; and a serialized-integrity release preflight.
+Delivered: encrypted offline foundation and vault/session security; encrypted catalogue/inventory cache; customer/supplier offline references; encrypted mutation transport; customer create/update; manager supplier create/update; purchase receiving (including serialized receiving and initial payments); adjustment requests/status reconciliation; provisional nonserialized CASH checkout; variant-priority catalogue/inventory model; serialized opening-stock/IMEI model; sellable serialized checkout boundary; serialized and mixed provisional offline CASH checkout; serialized identifier input hardening; the one-physical-unit/multiple-identifiers invariant; early duplicate normalized identifier rejection; a serialized-integrity release preflight; and grouped v2 serialized lookup/snapshot projections that preserve one physical-unit card with all identifiers.
 
 Deferred: offline discounts, credit, POS, bank-transfer, OTHER and split payments; refunds; unimplemented returns/reversals; pre-replay serialized PURCHASE_RECEIVE-to-sale identity bridge; and Admin offline business cache/mutations.
 
