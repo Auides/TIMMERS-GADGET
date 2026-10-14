@@ -113,7 +113,8 @@ test("database constraints, idempotency, checkout de-duplication, and offline de
   assert.match(offlineRoute, /rpc\("offline_purchase_receive"/);
   assert.doesNotMatch(offlineRoute, /insert into public\.(serialized_units|unit_identifiers)/i);
   const sales = readFileSync(new URL("../src/app/app/sales/actions.ts", import.meta.url), "utf8");
-  assert.match(sales, /const deduped = new Map<string, SerializedSaleUnit>\(\)/);
+  assert.match(sales, /staff_sellable_serialized_lookup_v2/);
+  assert.match(sales, /Array\.isArray\(row\.identifiers\)/);
   assert.match(sales, /unitId: row\.unit_id/);
 });
 

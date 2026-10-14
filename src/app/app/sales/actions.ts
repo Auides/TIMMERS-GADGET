@@ -34,6 +34,18 @@ type SalesContext = {
   supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
 };
 
+type GroupedSellableSerializedRow = {
+  unit_id: string;
+  product_id: string;
+  product_name: string;
+  product_sku: string;
+  variant_id: string | null;
+  variant_label: string | null;
+  condition: SerializedSaleUnit["condition"];
+  selling_price: number | string | null;
+  identifiers: Array<{ identifier_type: string; identifier_value: string }>;
+};
+
 async function salesContext(): Promise<SalesContext | null> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return null;
@@ -70,27 +82,27 @@ export async function searchSerializedUnitsForSale(query: string): Promise<Seria
     const context = await salesContext();
     if (!context) return { status: "error", message: "Access denied. Sign in again and retry.", units: [] };
 
-    const { data, error } = await context.supabase.rpc("staff_sellable_serialized_lookup", { p_search: search });
+    const { data, error } = await context.supabase.rpc("staff_sellable_serialized_lookup_v2", { p_search: search });
     if (error) return { status: "error", message: "Serialized search failed. Check your connection and try again.", units: [] };
 
-    const deduped = new Map<string, SerializedSaleUnit>();
-    for (const row of data ?? []) {
-      if (!deduped.has(row.unit_id)) {
-        deduped.set(row.unit_id, {
-          unitId: row.unit_id,
-          productId: row.product_id,
-          productName: row.product_name,
-          productSku: row.product_sku,
-          variantId: row.variant_id ?? null,
-          variantLabel: row.variant_label ?? null,
-          condition: row.condition,
-          sellingPrice: row.selling_price === null ? null : Number(row.selling_price),
-          identifierType: row.identifier_type,
-          identifierValue: row.identifier_value,
-        });
-      }
+    const rows = (data ?? []) as GroupedSellableSerializedRow[];
+    for (const row of rows) {
+      if (!Array.isArray(row.identifiers) || !row.identifiers.length) throw new Error("Invalid serialized search projection.");
     }
-    return { status: "success", units: [...deduped.values()] };
+    return {
+      status: "success",
+      units: rows.map((row) => ({
+        unitId: row.unit_id,
+        productId: row.product_id,
+        productName: row.product_name,
+        productSku: row.product_sku,
+        variantId: row.variant_id ?? null,
+        variantLabel: row.variant_label ?? null,
+        condition: row.condition,
+        sellingPrice: row.selling_price === null ? null : Number(row.selling_price),
+        identifiers: row.identifiers.map((identifier: { identifier_type: string; identifier_value: string }) => ({ identifierType: identifier.identifier_type, identifierValue: identifier.identifier_value })),
+      })),
+    };
   } catch {
     return { status: "error", message: "Serialized search failed. Check your connection and try again.", units: [] };
   }

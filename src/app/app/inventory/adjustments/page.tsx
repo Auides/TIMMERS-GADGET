@@ -28,7 +28,7 @@ export default async function Adjustments({ searchParams }: { searchParams: Prom
     ? supabase.from("inventory_adjustment_requests").select(requestSelect).order("created_at", { ascending: false })
     : Promise.resolve({ data: [] });
   const unitsPromise = supabase && query
-    ? supabase.rpc("staff_serialized_lookup", { search_text: query })
+    ? supabase.rpc("staff_serialized_lookup_v2", { search_text: query })
     : Promise.resolve({ data: [] });
   const staffContextPromise = supabase && staff
     ? supabase.rpc("staff_inventory_adjustment_request_context")

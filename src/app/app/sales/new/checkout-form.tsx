@@ -39,6 +39,10 @@ function sameMoney(a: number, b: number) {
   return Math.round(a * 100) === Math.round(b * 100);
 }
 
+function identifierLabel(unit: SerializedSaleUnit) {
+  return unit.identifiers.map((identifier) => `${identifier.identifierType}: ${identifier.identifierValue}`).join(" · ");
+}
+
 export function CheckoutForm({ catalogueRows, today }: { catalogueRows: CatalogueRow[]; today: string }) {
   const [cart, setCart] = useState<CheckoutCartLine[]>([]);
   const [payments, setPayments] = useState<CheckoutPayment[]>([freshPayment()]);
@@ -115,7 +119,7 @@ export function CheckoutForm({ catalogueRows, today }: { catalogueRows: Catalogu
           ...line,
           quantity: line.quantity + 1,
           serializedUnitIds: [...line.serializedUnitIds, unit.unitId],
-          serializedIdentifiers: [...line.serializedIdentifiers, `${unit.identifierType}: ${unit.identifierValue}`],
+          serializedIdentifiers: [...line.serializedIdentifiers, identifierLabel(unit)],
         } : line)
       : [...cart, {
           productId: unit.productId,
@@ -128,7 +132,7 @@ export function CheckoutForm({ catalogueRows, today }: { catalogueRows: Catalogu
           quantity: 1,
           availableQuantity: null,
           serializedUnitIds: [unit.unitId],
-          serializedIdentifiers: [`${unit.identifierType}: ${unit.identifierValue}`],
+          serializedIdentifiers: [identifierLabel(unit)],
         }];
     commitCart(next);
   }
@@ -260,7 +264,7 @@ export function CheckoutForm({ catalogueRows, today }: { catalogueRows: Catalogu
         <div className="mt-3 space-y-2">
           {serializedResults.map((unit) => <button key={unit.unitId} type="button" onClick={() => addSerialized(unit)} disabled={unit.sellingPrice === null || cart.some((line) => line.serializedUnitIds.includes(unit.unitId))} className="w-full rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-[var(--tg-gold)] disabled:cursor-not-allowed disabled:opacity-50">
             <b className="text-[var(--tg-navy)]">{unit.productName}{unit.variantLabel ? ` — ${unit.variantLabel}` : ""}</b>
-            <span className="mt-1 block text-sm text-slate-600">{unit.productSku} · {unit.condition} · {unit.identifierType}: {unit.identifierValue}</span>
+            <span className="mt-1 block text-sm text-slate-600">{unit.productSku} · {unit.condition} · {identifierLabel(unit)}</span>
             <span className="mt-2 block text-sm font-medium">{unit.sellingPrice === null ? "Price not configured" : money(unit.sellingPrice)}</span>
           </button>)}
         </div>

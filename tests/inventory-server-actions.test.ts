@@ -28,7 +28,9 @@ test("inventory server-action module exports only async actions", () => {
 test("serialized adjustment picker uses the shared nullable price formatter", () => {
   const source = readFileSync(new URL("../src/app/app/inventory/serialized-unit-picker.tsx", import.meta.url), "utf8");
   assert.match(source, /import \{ displaySellingPrice \} from "\.\/inventory-ui"/);
-  assert.match(source, /displaySellingPrice\(u\.selling_price\)/);
+  assert.match(source, /displaySellingPrice\(unit\.selling_price\)/);
+  assert.match(source, /key=\{unit\.unit_id\}/);
+  assert.match(source, /unit\.identifiers\.map/);
   assert.equal(source.includes("selling_price??0"), false);
 });
 

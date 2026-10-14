@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedProfile } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { OfflineCatalogueRecord, OfflineCustomerRecord, OfflineReadSnapshot, OfflineSellableSerializedRecord, OfflineSerializedInventoryRecord, OfflineSupplierRecord } from "@/lib/offline/types";
+import type { OfflineCatalogueRecord, OfflineCustomerRecord, OfflineReadSnapshot, OfflineSellableSerializedRecord, OfflineSerializedIdentifier, OfflineSerializedInventoryRecord, OfflineSupplierRecord } from "@/lib/offline/types";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +24,15 @@ function numberValue(value: unknown, nullable = false) {
   return number;
 }
 
+function serializedIdentifiers(value: unknown): OfflineSerializedIdentifier[] {
+  if (!Array.isArray(value) || !value.length) throw new Error("Invalid serialized identifier projection.");
+  return value.map((identifier) => {
+    if (!identifier || typeof identifier !== "object") throw new Error("Invalid serialized identifier projection.");
+    const row = identifier as Record<string, unknown>;
+    return { identifierType: requiredString(row.identifier_type), identifierValue: requiredString(row.identifier_value) };
+  });
+}
+
 function catalogueRecord(row: Record<string, unknown>): OfflineCatalogueRecord {
   return {
     productId: requiredString(row.product_id), productName: requiredString(row.product_name), productSku: requiredString(row.product_sku), productBarcode: nullableString(row.product_barcode),
@@ -41,7 +50,7 @@ function serializedRecord(row: Record<string, unknown>): OfflineSerializedInvent
     productBarcode: nullableString(row.product_barcode), productModel: nullableString(row.product_model), brandName: nullableString(row.brand_name), categoryName: nullableString(row.category_name),
     variantId: nullableString(row.variant_id), variantLabel: nullableString(row.variant_label), variantSku: nullableString(row.variant_sku), variantBarcode: nullableString(row.variant_barcode),
     condition: requiredString(row.condition), status: requiredString(row.status), sellingPrice: numberValue(row.selling_price, true) as number | null,
-    identifierType: requiredString(row.identifier_type), identifierValue: requiredString(row.identifier_value),
+    identifiers: serializedIdentifiers(row.identifiers),
   };
 }
 function sellableSerializedRecord(row: Record<string, unknown>): OfflineSellableSerializedRecord {
@@ -50,7 +59,7 @@ function sellableSerializedRecord(row: Record<string, unknown>): OfflineSellable
     productBarcode: nullableString(row.product_barcode), productModel: nullableString(row.product_model), brandName: nullableString(row.brand_name), categoryName: nullableString(row.category_name),
     variantId: nullableString(row.variant_id), variantLabel: nullableString(row.variant_label), variantSku: nullableString(row.variant_sku), variantBarcode: nullableString(row.variant_barcode),
     condition: requiredString(row.condition), status: "AVAILABLE", cataloguePriceId: requiredString(row.catalogue_price_id), priceRevision: numberValue(row.price_revision) as number,
-    sellingPrice: numberValue(row.selling_price) as number, identifierType: requiredString(row.identifier_type), identifierValue: requiredString(row.identifier_value),
+    sellingPrice: numberValue(row.selling_price) as number, identifiers: serializedIdentifiers(row.identifiers),
   };
 }
 
@@ -74,8 +83,8 @@ export async function GET() {
   try {
     const [catalogueResult, serializedResult, sellableSerializedResult, customerResult, supplierResult] = await Promise.all([
       supabase.rpc("staff_offline_catalogue_snapshot"),
-      supabase.rpc("staff_serialized_inventory_snapshot"),
-      supabase.rpc("staff_offline_sellable_serialized_snapshot"),
+      supabase.rpc("staff_serialized_inventory_snapshot_v2"),
+      supabase.rpc("staff_offline_sellable_serialized_snapshot_v2"),
       supabase.rpc("staff_customer_reference_snapshot_v2"),
       profile.role === "MANAGER"
         ? supabase.rpc("manager_supplier_reference_snapshot_v2")

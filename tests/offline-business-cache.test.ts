@@ -24,7 +24,7 @@ class MemoryCacheStore implements OfflineBusinessCacheStore {
 const snapshot = (capturedAt = "2026-09-30T10:00:00.000Z"): OfflineReadSnapshot => ({
   capturedAt,
   catalogue: [{ productId: "product-1", productName: "Widget", productSku: "WIDGET-1", productBarcode: null, brandName: null, categoryName: null, serialized: false, variantId: null, variantLabel: null, variantSku: null, variantBarcode: null, condition: "NEW", quantity: 4, cataloguePriceId: "price-1", priceRevision: 1, sellingPrice: 1500 }],
-  serializedInventory: [{ unitId: "unit-1", productId: "product-1", productName: "Widget", productSku: "WIDGET-1", productBarcode: null, productModel: null, brandName: null, categoryName: null, variantId: null, variantLabel: null, variantSku: null, variantBarcode: null, condition: "NEW", status: "AVAILABLE", sellingPrice: 1500, identifierType: "SERIAL", identifierValue: "SERIAL-001" }],
+  serializedInventory: [{ unitId: "unit-1", productId: "product-1", productName: "Widget", productSku: "WIDGET-1", productBarcode: null, productModel: null, brandName: null, categoryName: null, variantId: null, variantLabel: null, variantSku: null, variantBarcode: null, condition: "NEW", status: "AVAILABLE", sellingPrice: 1500, identifiers: [{ identifierType: "SERIAL", identifierValue: "SERIAL-001" }, { identifierType: "IMEI_1", identifierValue: "123456789012345" }] }],
   sellableSerialized: [],
   customers: [{ customerId: "customer-1", fullName: "Ada Customer", phone: "08000000000", email: "ada@example.test", customerVersion: "2026-09-30T09:00:00.000Z" }],
   suppliers: [{ supplierId: "supplier-1", businessName: "Acme Supplier", contactName: "Ayo Contact", phone: "08001111111", email: "ayo@example.test", active: true, supplierVersion: "2026-09-30T09:00:00.000Z" }],
@@ -41,7 +41,7 @@ test("business snapshots are encrypted, complete, and readable only by their use
   await refreshOfflineReadCache(store, { userId: userOne, deviceId, role: "STAFF", vaultKey: key }, snapshot(), { createId: () => "snapshot-1" });
   assert.equal(store.records.length, 5);
   assert.equal(new Set(store.records.map((record) => record.snapshotId)).size, 1);
-  assert.doesNotMatch(JSON.stringify(store.records), /Widget|SERIAL-001|1500|Ada Customer|08000000000|ada@example\.test|Acme Supplier|Ayo Contact|08001111111|ayo@example\.test/);
+  assert.doesNotMatch(JSON.stringify(store.records), /Widget|SERIAL-001|123456789012345|1500|Ada Customer|08000000000|ada@example\.test|Acme Supplier|Ayo Contact|08001111111|ayo@example\.test/);
   assert.doesNotMatch(readFileSync(new URL("../src/lib/offline/business-cache.ts", import.meta.url), "utf8"), /outbox/i);
   assert.deepEqual(await readOfflineReadCache(store, { userId: userOne, deviceId, role: "STAFF", vaultKey: key }), snapshot());
   assert.equal(await readOfflineReadCache(store, { userId: userTwo, deviceId, role: "STAFF", vaultKey: await vaultKey(userTwo) }), null);

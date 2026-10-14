@@ -18,8 +18,7 @@ export type SerializedSaleUnit = {
   variantLabel: string | null;
   condition: "NEW" | "USED" | "REFURBISHED";
   sellingPrice: number | null;
-  identifierType: string;
-  identifierValue: string;
+  identifiers: Array<{ identifierType: string; identifierValue: string }>;
 };
 
 export type SerializedSearchResult =

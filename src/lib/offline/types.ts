@@ -152,6 +152,12 @@ export type OfflineCatalogueRecord = {
   sellingPrice: number;
 };
 
+export type OfflineSerializedIdentifier = {
+  identifierType: string;
+  identifierValue: string;
+};
+
+/** One record is one physical serialized unit; its identifiers are nested. */
 export type OfflineSerializedInventoryRecord = {
   unitId: string;
   productId: string;
@@ -168,8 +174,7 @@ export type OfflineSerializedInventoryRecord = {
   condition: string;
   status: string;
   sellingPrice: number | null;
-  identifierType: string;
-  identifierValue: string;
+  identifiers: OfflineSerializedIdentifier[];
 };
 
 /** Checkout-only projection. It is deliberately distinct from historical inventory. */
