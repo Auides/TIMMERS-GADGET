@@ -4,17 +4,17 @@
 
 | Item | Required value | Status on 2026-10-14 |
 | --- | --- | --- |
-| Application commit | `a29126d49cc6371d2bd58956ccf6ad485c747a17` | verified locally; grouped serialized lookup repair |
+| Application commit | `0c465ec946bffc70aeec06f0af2cc70bc64061ee` | verified locally; authenticated Worker CPU reduction |
 | Branch | `recovery/offline-v2` | verified locally |
 | Supabase project ref | `wugmcqtyiknqobjqwhno` | release-day verification required |
 | Worker | `timmers-gadget` | source configuration verified |
 | Application URL | `https://timmers-gadget.timmersgadget.workers.dev/app` | smoke-test target |
 
-This document is a preparation artifact, not permission to migrate or deploy. The release is **NO-GO** until the release-day read-only checks, backup confirmation, and formal decision on the unresolved Cloudflare 1102 risk are complete.
+This document is a preparation artifact, not permission to migrate or deploy. The release is **NO-GO** until the release-day read-only checks and an approved database backup/restore-readiness resolution are complete. A Cloudflare canary is also required, but it must not begin before the database blocker is resolved because this application release depends on pending database migrations.
 
 ## Validated local baseline
 
-The release candidate completed the local quality gate with **159 project tests** and **111 offline tests** passing. `npm run lint`, `npm run build`, `npm run build:vinext`, and `git diff --check` also passed. The offline mutation registry remains exactly seven commands. These are local-source results, not production evidence.
+The release candidate completed the local quality gate with **160 project tests** and **111 offline tests** passing. `npm run lint`, `npm run build`, `npm run build:vinext`, and `git diff --check` also passed. The offline mutation registry remains exactly **seven** commands. These are local-source results, not production evidence.
 
 ## Pending migration order and source dependency audit
 
@@ -173,17 +173,35 @@ Release-day verification must include function EXECUTE privileges, RLS/policy in
 
 ## Cloudflare target and 1102 status
 
-The tracked `wrangler.jsonc` targets Worker `timmers-gadget`, with the Vinext output handler and `nodejs_compat`; `package.json` defines the approved deployment command as `npm run deploy:vinext`. This is a source configuration **PASS**, but the production account/version could not be verified.
+The tracked `wrangler.jsonc` targets Worker `timmers-gadget`, with the Vinext output handler and `nodejs_compat`; `package.json` defines the approved deployment command as `npm run deploy:vinext`.
 
-Read-only Cloudflare inspection was unavailable: `npx wrangler deployments list --name timmers-gadget` required `CLOUDFLARE_API_TOKEN` in the noninteractive session. No token was printed or changed. On release day, an authorized operator must run `npx wrangler whoami`, capture the incumbent Worker version, inspect Workers observability/logs for error 1102, and record only timestamp, route/method, outcome, CPU/wall/memory signal, Ray/request ID, and recurring route pattern. Never record cookies, authentication material, identifiers, personal data, costs, or raw mutation payloads.
+Production evidence identifies current Worker `timmers-gadget`, version `f3ce35d6-7836-48ae-b9e5-9c439eab80d2`, serving 100% of traffic. The deployment page reported median CPU time of **28.94 ms**. Workers observability recorded **322** confirmed `Worker exceeded CPU time limit.` events in the preceding seven days:
 
-**1102 is an UNRESOLVED PRODUCTION RELIABILITY RISK.** No source change is justified without observability evidence. It is not an accepted risk unless the authorized product/operations owner explicitly records that decision.
+| Route | Confirmed CPU-limit events |
+| --- | ---: |
+| `/app/catalogue` | 86 |
+| `/app/inventory` | 74 |
+| `/app` | 35 |
+| `/app/catalogue/REDACTED` | 33 |
+| `/app/inventory/adjustments` | 26 |
+| `/app/suppliers` | 17 |
+| `/app/sales/new` | 15 |
+| `/app/purchases` | 14 |
+| `/app/inventory/opening-stock` | 12 |
+| `/app/sales` | 7 |
+| `/app/catalogue/new` | 2 |
+| `/app/inventory/serialized` | 1 |
+| **Total** | **322** |
+
+Source investigation confirmed that protected requests previously resolved authentication/profile state in the proxy, `/app` layout, and route page. The repair in `src/lib/auth.ts` keeps proxy authorization unchanged while allowing the layout and page to share one request-scoped React `cache()` resolution. It introduces no cross-request or persistent authentication cache. Duplicate auth/profile work is **CONFIRMED**; its contribution to CPU pressure is **SUPPORTED**; it is **NOT PROVEN** to be the sole cause of production 1102 events.
+
+**Cloudflare gate: CANARY REQUIRED. Do not mark this gate PASS.** Once every other release blocker is cleared, perform a controlled canary and compare CPU time, CPU-limit/1102 events, error rate, and request behavior for `/app`, `/app/catalogue`, `/app/inventory`, `/app/purchases`, `/app/inventory/adjustments`, `/app/suppliers`, and `/app/sales/new`. Record safe operational metadata only; never record credentials, cookies, identifiers, personal data, costs, or raw mutation payloads.
 
 ## Backup and rollback readiness
 
-**Status: BLOCKED pending release-day evidence.** Before migration, capture and verify a restorable database backup containing schema, business data, migration history, and relevant supported auth/profile state. Record backup time, retention location, restoration owner, and a non-production restore verification result. Do not store secrets in this repository.
+**Backup gate: ACTION REQUIRED.** The Supabase Free plan has no managed backups. No logical backup has yet been created, Docker will not be installed, and `pg_dump` is unavailable on the current machine. Before migration, obtain an approved resolution that provides a recent recoverable backup and documented restore readiness for schema, business data, migration history, and relevant supported auth/profile state. Record backup time, retention location, restoration owner, and non-production restore verification result. Do not store secrets in this repository.
 
-For application rollback, record the current Worker version ID before deployment, deploy only the exact approved release, and retain the ability to restore that prior Worker version. For database rollback, do not promise down migrations: once live transactions use the new schema, schema rollback can be unsafe. Prefer a narrowly reviewed forward repair; reserve backup restoration for a controlled incident/outage process.
+For application rollback, record the current Worker version ID before deployment, deploy only the exact approved release, and retain the ability to restore that prior Worker version. For database rollback, do not promise down migrations: once live transactions use the new schema, schema rollback can be unsafe. Prefer a narrowly reviewed forward repair; reserve backup restoration for a controlled incident/outage process. The controlled Cloudflare canary **must not begin** until this backup/restore-readiness blocker has an approved resolution.
 
 ## Release manifest
 
