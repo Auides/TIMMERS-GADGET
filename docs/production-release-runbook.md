@@ -4,7 +4,7 @@ This runbook is deliberately non-executable preparation documentation. It author
 
 ## Stop conditions
 
-Stop and declare **NO-GO** if the commit/branch changes, any quality gate fails, remote migration history differs unexpectedly, data preflight reveals a blocker, the backup/restore-readiness resolution is not approved, the target identity cannot be proven, or the required Cloudflare canary has not completed successfully. Never repair data ad hoc in this window. The canary must not begin until backup/restore readiness is approved because this release depends on pending database migrations.
+Stop and declare **NO-GO** if the commit/branch changes, any quality gate fails, remote migration history differs unexpectedly, data preflight reveals a blocker, the verified backup evidence is unavailable or does not match the release record, the target identity cannot be proven, or the required Cloudflare canary has not completed successfully. Never repair data ad hoc in this window. The overall release remains **NO-GO — pending controlled migration/release canary execution**.
 
 ## Ordered release procedure
 
@@ -25,13 +25,13 @@ Stop and declare **NO-GO** if the commit/branch changes, any quality gate fails,
    git diff --check
    ```
 4. Independently confirm the selected Supabase project is exactly `wugmcqtyiknqobjqwhno`. Do not relink this repository and do not use any other project.
-5. Resolve the **ACTION REQUIRED** backup gate before change. Supabase Free has no managed backups; no logical backup has been created; Docker will not be installed; and `pg_dump` is unavailable on the current machine. Obtain approved, recorded backup/restore readiness covering schema, business data, migration history, and supported auth/profile state, including location, timestamp, recovery owner, and non-production restore-test evidence outside source control.
+5. Confirm the **PASS — verified manual logical backup available** gate before change. The production backup for project `wugmcqtyiknqobjqwhno` was validated at `2026-10-15 10:57:59 +01:00`, represents application RC `0c465ec946bffc70aeec06f0af2cc70bc64061ee`, and is retained outside the repository at `C:\TIMMERS-BACKUPS\pre-release-20261015-000639`. Verify the manifest and hashes recorded in [production-release-preflight.md](production-release-preflight.md); do not stage, upload, or expose the sensitive backup files. **RESTORE DRILL NOT PERFORMED** remains an explicit caveat.
 6. In Cloudflare, verify the authenticated account context and record the current version of Worker `timmers-gadget`. Current recorded production evidence is version `f3ce35d6-7836-48ae-b9e5-9c439eab80d2`, serving 100% of traffic, with deployment-page median CPU time of 28.94 ms. Do not deploy yet.
 7. Verify production migration history using the read-only procedure in [production-release-preflight.md](production-release-preflight.md). Record project identity and history outcome, not sensitive raw data.
 8. Run the general read-only production data preflight in [production-release-preflight.md](production-release-preflight.md). Record counts/outcomes, not sensitive raw data.
 9. Run the approved read-only serialized-unit integrity preflight described in [production-release-preflight.md](production-release-preflight.md). It must inspect duplicate identifiers, identifier types, orphan/inconsistent rows, probable physical-unit duplicates, physical counts, provenance, and data-caused search duplication.
 10. Review duplicate and probable-duplicate findings. Classify each SAFE, WARNING, or BLOCKER. Do not merge/delete data automatically.
-11. Resolve every BLOCKER before migration, and obtain an explicit authorized decision for any remaining risk. Keep the Cloudflare gate at **CANARY REQUIRED**: the preceding seven days contained 322 confirmed `Worker exceeded CPU time limit.` events, concentrated on catalogue and inventory routes. Do not begin the canary until step 5 is complete.
+11. Resolve every BLOCKER before migration, and obtain an explicit authorized decision for any remaining risk. The database backup gate is **PASS**; preserve the explicit caveat that no destructive restore drill was performed. Keep the Cloudflare gate at **CANARY REQUIRED**: the preceding seven days contained 322 confirmed `Worker exceeded CPU time limit.` events, concentrated on catalogue and inventory routes.
 12. Apply the 16 migrations, once, in this exact chronological order through the approved Supabase production migration process:
    1. `20260930082955_staff_serialized_inventory_snapshot.sql`
    2. `20260930163023_phase4_offline_customer_supplier_reference_snapshots.sql`

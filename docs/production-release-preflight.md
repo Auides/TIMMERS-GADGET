@@ -2,7 +2,7 @@
 
 ## Release identity
 
-| Item | Required value | Status on 2026-10-14 |
+| Item | Required value | Status on 2026-10-15 |
 | --- | --- | --- |
 | Application commit | `0c465ec946bffc70aeec06f0af2cc70bc64061ee` | verified locally; authenticated Worker CPU reduction |
 | Branch | `recovery/offline-v2` | verified locally |
@@ -10,7 +10,7 @@
 | Worker | `timmers-gadget` | source configuration verified |
 | Application URL | `https://timmers-gadget.timmersgadget.workers.dev/app` | smoke-test target |
 
-This document is a preparation artifact, not permission to migrate or deploy. The release is **NO-GO** until the release-day read-only checks and an approved database backup/restore-readiness resolution are complete. A Cloudflare canary is also required, but it must not begin before the database blocker is resolved because this application release depends on pending database migrations.
+This document is a preparation artifact, not permission to migrate or deploy. The release is **NO-GO — pending controlled migration/release canary execution** and the remaining release-day checks. The database backup gate is now satisfied; the Cloudflare canary remains required and must not be marked PASS until it completes successfully.
 
 ## Validated local baseline
 
@@ -199,9 +199,40 @@ Source investigation confirmed that protected requests previously resolved authe
 
 ## Backup and rollback readiness
 
-**Backup gate: ACTION REQUIRED.** The Supabase Free plan has no managed backups. No logical backup has yet been created, Docker will not be installed, and `pg_dump` is unavailable on the current machine. Before migration, obtain an approved resolution that provides a recent recoverable backup and documented restore readiness for schema, business data, migration history, and relevant supported auth/profile state. Record backup time, retention location, restoration owner, and non-production restore verification result. Do not store secrets in this repository.
+**Backup gate: PASS — verified manual logical backup available.** A manual logical PostgreSQL backup of production project `wugmcqtyiknqobjqwhno` was validated on **2026-10-15 10:57:59 +01:00**. It represents application RC `0c465ec946bffc70aeec06f0af2cc70bc64061ee`, documentation HEAD `53e12f1dce494c716dd7d1716de2b4dc438e1f0f`, and production migration baseline `20260915054500`.
 
-For application rollback, record the current Worker version ID before deployment, deploy only the exact approved release, and retain the ability to restore that prior Worker version. For database rollback, do not promise down migrations: once live transactions use the new schema, schema rollback can be unsafe. Prefer a narrowly reviewed forward repair; reserve backup restoration for a controlled incident/outage process. The controlled Cloudflare canary **must not begin** until this backup/restore-readiness blocker has an approved resolution.
+The backup is retained outside the repository at `C:\TIMMERS-BACKUPS\pre-release-20261015-000639`. It contains sensitive production and Auth data and must remain securely retained; it was not staged, committed, or uploaded. `manifest.txt` exists and records the backup metadata and hashes.
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `roles.sql` | 7,679 | `AFFB4BB4B6CA66BC6885E20D0D7992083FB2FFE5BF6EA361D4C66577E5126E7D` |
+| `schema.sql` | 487,401 | `9311DCA6B13E33490B3B8C00D7EEDB1B1B50F798F9F12A2B38971063FC30D29C` |
+| `data.sql` | 142,035 | `384313AEEE9E67AE80A9AA0486B0B293EA79F505DD8E3FA0E88089299AD76F0F` |
+| `history_schema.sql` | 1,294 | `191E416D53D93CA6849A120E5D0D16489125819038C18B8DDFB7EFE8FC1DB15F` |
+| `history_data.sql` | 412,875 | `57E5DBA88BDE02445026876735139F0D213DD1BE50FA235AB06E24A2690BEB7C` |
+| `auth_data.sql` | 27,651 | `9EEBDDDC987A4E9E9EE79AC7F87DE28EF6CA6D5225BE1731B641B9B20E94EB4A` |
+
+Production evidence at backup time: 4 Auth users, 0 Storage buckets, and 0 Storage objects. No project migration creates or alters custom objects in the managed `auth` or `storage` schemas; project migrations reference `auth.users` and `auth.uid()` only as expected.
+
+Backup handling confirmation: the repository remained clean; the production DB URI was removed from the clipboard and PowerShell environment after backup; no restore was executed; no migration was applied; no production mutation SQL was executed; nothing was pushed; and nothing was deployed.
+
+### Restore readiness
+
+**RESTORE DRILL NOT PERFORMED.** No destructive restore drill is claimed.
+
+If recovery is required, the controlled logical-restore strategy is to:
+
+1. Provision or prepare a controlled target database/project.
+2. Restore required roles where appropriate.
+3. Restore the application schema.
+4. Restore public business data.
+5. Restore Supabase migration-history schema/data as required.
+6. Restore Auth data carefully into a compatible Supabase-managed `auth` schema.
+7. Validate application, profile, and Auth relationships.
+8. Reconfigure external project-specific settings when restoring into a new project.
+9. Treat Worker rollback and database recovery as separate actions; Worker rollback is not database rollback.
+
+After live writes, preferred incident response remains forward repair where safe; otherwise use controlled logical restore/recovery. Do not promise down migrations as a database rollback mechanism.
 
 ## Release manifest
 
