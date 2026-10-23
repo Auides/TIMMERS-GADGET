@@ -6,6 +6,10 @@
     "nodejs_compat"
   ],
   "main": "vinext/server/fetch-handler",
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
   "assets": {
     "directory": "dist/client",
     "not_found_handling": "none",
